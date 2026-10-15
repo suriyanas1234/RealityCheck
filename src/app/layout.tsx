@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { BottomNavBar } from "@/components/BottomNavBar";
+import { AuthGate } from "@/components/AuthGate";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -32,10 +33,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full bg-[#191919] text-[#E3E3E3]">
       <body className="min-h-full flex flex-col bg-[#191919] antialiased">
-        <div className="flex-1 pb-24">
-          {children}
-        </div>
-        <BottomNavBar />
+        <AuthGate>
+          <div className="flex-1 pb-24">
+            {children}
+          </div>
+          <BottomNavBar />
+        </AuthGate>
       </body>
     </html>
   );

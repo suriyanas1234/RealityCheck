@@ -6,6 +6,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, DbMeal, DbChore, seedDatabaseIfEmpty } from '@/lib/db';
 import { getTodayString, getCurrentAndNextBlock, formatMinutesCountdown } from '@/lib/date-utils';
 import { TopHeader } from '@/components/TopHeader';
+import { OnboardingDialog } from '@/components/OnboardingDialog';
+import { StorageService } from '@/lib/storage';
 import { playSound } from '@/lib/sound';
 import {
   Clock,
@@ -35,9 +37,14 @@ export default function TodayExecutionHub() {
 
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [dateDisplay, setDateDisplay] = useState<string>('');
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     seedDatabaseIfEmpty();
+    const profile = StorageService.getUserProfile();
+    if (!profile.onboarded) {
+      setShowOnboarding(true);
+    }
     const d = new Date();
     setTodayDate(getTodayString(d));
     setCurrentTime(d);
@@ -127,6 +134,11 @@ export default function TodayExecutionHub() {
   return (
     <div className="min-h-screen bg-[#191919] text-[#E3E3E3]">
       <TopHeader pageTitle="Execution Hub" icon="🎯" />
+
+      <OnboardingDialog
+        isOpen={showOnboarding}
+        onComplete={() => setShowOnboarding(false)}
+      />
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         
