@@ -105,7 +105,10 @@ export default function TodayExecutionHub() {
     } else {
       updated[todayDate] = new Date().toISOString();
     }
-    await db.chores.update(chore.id, { completedDates: updated });
+    await db.chores.update(chore.id, {
+      completedDates: updated,
+      updatedAt: new Date().toISOString(),
+    });
   };
 
   const handleAddChore = async (e: React.FormEvent) => {
@@ -118,6 +121,7 @@ export default function TodayExecutionHub() {
       slot: 'midday',
       isDefault: false,
       completedDates: {},
+      updatedAt: new Date().toISOString(),
     });
     setNewChoreTitle('');
     setIsAddingChore(false);

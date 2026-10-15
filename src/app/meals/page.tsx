@@ -64,6 +64,7 @@ export default function MealsEngineHub() {
       loggedAt: now.toISOString(),
       isOutlier,
       outlierReason: reason,
+      updatedAt: now.toISOString(),
     });
   };
 
@@ -82,6 +83,7 @@ export default function MealsEngineHub() {
       loggedAt: now.toISOString(),
       isOutlier,
       outlierReason: reason,
+      updatedAt: now.toISOString(),
     });
     setCustomName('');
     setActiveCustomSlot(null);
