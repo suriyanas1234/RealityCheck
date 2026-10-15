@@ -12,6 +12,10 @@ import {
   fetchMealsSince,
   fetchInitiativeLedgerSince,
   fetchDailyAuditsSince,
+  upsertPushupLogs,
+  upsertGymSessions,
+  fetchPushupLogsSince,
+  fetchGymSessionsSince,
 } from '@/lib/supabase';
 import {
   SyncStatus,
@@ -20,6 +24,8 @@ import {
   MealRecordCloud,
   InitiativeLedgerEntry,
   DailyAuditRecordCloud,
+  PushupLogRecord,
+  GymSessionRecord,
 } from '@/types';
 
 const LAST_SYNC_KEY = 'realitycheck_last_sync_at';
@@ -61,7 +67,9 @@ export function useCloudSync() {
         unsynced.chores.length +
         unsynced.gestures.length +
         unsynced.audits.length +
-        unsynced.user_profile.length;
+        unsynced.user_profile.length +
+        unsynced.pushup_logs.length +
+        unsynced.gym_sessions.length;
       setPendingCount(total);
     } catch {
       // ignore
@@ -203,6 +211,45 @@ export function useCloudSync() {
         }
       }
 
+      if (unsynced.pushup_logs.length) {
+        const records: PushupLogRecord[] = unsynced.pushup_logs.map((p) => ({
+          id: p.id,
+          user_id: userId,
+          date: p.date,
+          target_count: p.targetCount,
+          completed_count: p.completedCount,
+          sets: p.sets,
+          logged_at: p.loggedAt,
+          updated_at: p.updatedAt,
+        }));
+        const res = await upsertPushupLogs(records, creds.url, creds.anonKey);
+        if (res.success) {
+          pushed += records.length;
+          await markRecordsSynced({ pushup_logs: unsynced.pushup_logs.map((p) => p.id) });
+        } else {
+          setLastError(`Pushup logs push failed: ${res.error}`);
+        }
+      }
+
+      if (unsynced.gym_sessions.length) {
+        const records: GymSessionRecord[] = unsynced.gym_sessions.map((g) => ({
+          id: g.id,
+          user_id: userId,
+          date: g.date,
+          workout_type: g.workoutType,
+          completed: g.completed,
+          logged_at: g.loggedAt,
+          updated_at: g.updatedAt,
+        }));
+        const res = await upsertGymSessions(records, creds.url, creds.anonKey);
+        if (res.success) {
+          pushed += records.length;
+          await markRecordsSynced({ gym_sessions: unsynced.gym_sessions.map((g) => g.id) });
+        } else {
+          setLastError(`Gym sessions push failed: ${res.error}`);
+        }
+      }
+
       // ---------- PULL (Cloud -> Local) ----------
       let pulled = 0;
 
@@ -263,6 +310,39 @@ export function useCloudSync() {
           }))
         );
         pulled += auditsRes.records.length;
+      }
+
+      const pushupsRes = await fetchPushupLogsSince(userId, lastSyncIso, creds.url, creds.anonKey);
+      if (pushupsRes.success && pushupsRes.records?.length) {
+        await db.pushup_logs.bulkPut(
+          pushupsRes.records.map((r) => ({
+            id: r.id,
+            date: r.date,
+            targetCount: r.target_count,
+            completedCount: r.completed_count,
+            sets: r.sets || [],
+            loggedAt: r.logged_at,
+            updatedAt: r.updated_at,
+            syncedAt: new Date().toISOString(),
+          }))
+        );
+        pulled += pushupsRes.records.length;
+      }
+
+      const gymRes = await fetchGymSessionsSince(userId, lastSyncIso, creds.url, creds.anonKey);
+      if (gymRes.success && gymRes.records?.length) {
+        await db.gym_sessions.bulkPut(
+          gymRes.records.map((r) => ({
+            id: r.id,
+            date: r.date,
+            workoutType: r.workout_type,
+            completed: r.completed,
+            loggedAt: r.logged_at,
+            updatedAt: r.updated_at,
+            syncedAt: new Date().toISOString(),
+          }))
+        );
+        pulled += gymRes.records.length;
       }
 
       const now = new Date();

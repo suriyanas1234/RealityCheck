@@ -7,8 +7,11 @@ import { db, DbMeal, DbChore, seedDatabaseIfEmpty } from '@/lib/db';
 import { getTodayString, getCurrentAndNextBlock, formatMinutesCountdown } from '@/lib/date-utils';
 import { TopHeader } from '@/components/TopHeader';
 import { OnboardingModal } from '@/components/OnboardingModal';
+import { NotificationPermissionBanner } from '@/components/NotificationPermissionBanner';
+import { PushupEngine } from '@/components/PushupEngine';
 import { StorageService } from '@/lib/storage';
 import { playSound } from '@/lib/sound';
+import { useNotificationScheduler } from '@/hooks/useNotificationScheduler';
 import {
   Clock,
   Check,
@@ -30,6 +33,7 @@ const SCHEDULE_ANCHORS = [
 ];
 
 export default function TodayExecutionHub() {
+  useNotificationScheduler();
   const [mounted, setMounted] = useState(false);
   const [todayDate, setTodayDate] = useState('');
   const [newChoreTitle, setNewChoreTitle] = useState('');
@@ -138,6 +142,8 @@ export default function TodayExecutionHub() {
   return (
     <div className="min-h-screen bg-[#191919] text-[#E3E3E3]">
       <TopHeader pageTitle="Execution Hub" icon="🎯" />
+
+      <NotificationPermissionBanner />
 
       <OnboardingModal
         isOpen={showOnboarding}
@@ -375,6 +381,9 @@ export default function TodayExecutionHub() {
             })}
           </div>
         </div>
+
+        {/* Daily Pushups & Gym */}
+        <PushupEngine />
 
         {/* Quick Route Teaser to Vault */}
         <div className="notion-panel p-4 flex items-center justify-between">

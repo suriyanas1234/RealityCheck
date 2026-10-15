@@ -189,6 +189,22 @@ export const DEFAULT_CHORES: ChoreItem[] = [
     completedDates: {},
     isDefault: true,
   },
+  {
+    id: 'chore-hair-oil',
+    title: 'Hair Oil Protocol (Non-Hair Wash Days)',
+    slot: 'morning',
+    estimatedSeconds: 90,
+    completedDates: {},
+    isDefault: true,
+  },
+  {
+    id: 'chore-weekly-shave',
+    title: 'Weekly Shave Maintenance',
+    slot: 'morning',
+    estimatedSeconds: 300,
+    completedDates: {},
+    isDefault: true,
+  },
 ];
 
 export const DEFAULT_CONTACTS: RelationshipContact[] = [

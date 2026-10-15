@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { BottomNavBar } from "@/components/BottomNavBar";
 import { AuthGate } from "@/components/AuthGate";
+import { NotificationScheduler } from "@/components/NotificationScheduler";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -34,6 +35,7 @@ export default function RootLayout({
     <html lang="en" className="h-full bg-[#191919] text-[#E3E3E3]">
       <body className="min-h-full flex flex-col bg-[#191919] antialiased">
         <AuthGate>
+          <NotificationScheduler />
           <div className="flex-1 pb-24">
             {children}
           </div>

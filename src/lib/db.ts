@@ -68,6 +68,59 @@ export interface DbCadence {
   instructions: string;
 }
 
+export interface PushupSet {
+  reps: number;
+  timestamp: string; // ISO
+}
+
+export interface DbPushupLog {
+  id: string; // date YYYY-MM-DD (one log per day)
+  date: string; // YYYY-MM-DD
+  targetCount: number; // default 100
+  completedCount: number;
+  sets: PushupSet[];
+  loggedAt: string; // ISO
+  updatedAt: string;
+  syncedAt?: string;
+}
+
+export interface DbGymSession {
+  id: string; // date YYYY-MM-DD (one session per day)
+  date: string; // YYYY-MM-DD
+  workoutType: string; // "Push" | "Pull" | "Legs" | custom
+  completed: boolean;
+  loggedAt: string; // ISO
+  updatedAt: string;
+  syncedAt?: string;
+}
+
+export type TaskPriority = 'high_focus' | 'quick_win' | 'errand';
+
+export interface DbTask {
+  id: string;
+  title: string;
+  priority: TaskPriority;
+  completed: boolean;
+  completedAt?: string; // ISO when completed
+  createdAt: string; // ISO
+  updatedAt: string;
+}
+
+export type GroceryCategory =
+  | 'produce'
+  | 'protein_dairy'
+  | 'pantry'
+  | 'personal_care';
+
+export interface DbGroceryItem {
+  id: string;
+  name: string;
+  category: GroceryCategory;
+  checked: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export class RealityCheckDatabase extends Dexie {
   meals!: Table<DbMeal, string>;
   chores!: Table<DbChore, string>;
@@ -75,6 +128,10 @@ export class RealityCheckDatabase extends Dexie {
   audits!: Table<DbAudit, string>;
   cadences!: Table<DbCadence, string>;
   user_profile!: Table<DbUserProfile, string>;
+  pushup_logs!: Table<DbPushupLog, string>;
+  gym_sessions!: Table<DbGymSession, string>;
+  tasks!: Table<DbTask, string>;
+  groceries!: Table<DbGroceryItem, string>;
 
   constructor() {
     super('RealityCheck_PWA_v2');
@@ -99,6 +156,18 @@ export class RealityCheckDatabase extends Dexie {
       audits: 'id, date, completedAt, updatedAt, syncedAt',
       cadences: 'id, recipient',
       user_profile: 'id, updatedAt, syncedAt',
+    });
+    this.version(4).stores({
+      meals: 'id, date, mealType, loggedAt, isOutlier, updatedAt, syncedAt',
+      chores: 'id, slot, isDefault, updatedAt, syncedAt',
+      gestures: 'id, date, recipient, timestamp, isProactive, wasPrompted, updatedAt, syncedAt',
+      audits: 'id, date, completedAt, updatedAt, syncedAt',
+      cadences: 'id, recipient',
+      user_profile: 'id, updatedAt, syncedAt',
+      pushup_logs: 'id, date, updatedAt, syncedAt',
+      gym_sessions: 'id, date, updatedAt, syncedAt',
+      tasks: 'id, completed, priority, updatedAt',
+      groceries: 'id, category, checked, updatedAt',
     });
   }
 }
@@ -183,7 +252,7 @@ export function evaluateMealWindow(
 }
 
 // Default Chores
-export const DEFAULT_CHORES_LIST: Array<Omit<DbChore, 'completedDates'>> = [
+export const DEFAULT_CHORES_LIST: Array<Omit<DbChore, 'completedDates' | 'updatedAt' | 'syncedAt'>> = [
   {
     id: 'chore-sink-morning',
     title: 'Morning Sink Clear & Dry',
@@ -214,23 +283,37 @@ export const DEFAULT_CHORES_LIST: Array<Omit<DbChore, 'completedDates'>> = [
     slot: 'evening',
     isDefault: true,
   },
+  {
+    id: 'chore-hair-oil',
+    title: 'Hair Oil Protocol (Non-Hair Wash Days)',
+    slot: 'morning',
+    isDefault: true,
+  },
+  {
+    id: 'chore-weekly-shave',
+    title: 'Weekly Shave Maintenance',
+    slot: 'morning',
+    isDefault: true,
+  },
 ];
 
 // Fetch all local records that have not yet been pushed to the cloud
 export async function getUnsyncedRecords() {
   if (typeof window === 'undefined') {
-    return { meals: [], chores: [], gestures: [], audits: [], user_profile: [] };
+    return { meals: [], chores: [], gestures: [], audits: [], user_profile: [], pushup_logs: [], gym_sessions: [] };
   }
 
-  const [meals, chores, gestures, audits, user_profile] = await Promise.all([
+  const [meals, chores, gestures, audits, user_profile, pushup_logs, gym_sessions] = await Promise.all([
     db.meals.filter((m) => !m.syncedAt).toArray(),
     db.chores.filter((c) => !c.syncedAt).toArray(),
     db.gestures.filter((g) => !g.syncedAt).toArray(),
     db.audits.filter((a) => !a.syncedAt).toArray(),
     db.user_profile.filter((p) => !p.syncedAt).toArray(),
+    db.pushup_logs.filter((p) => !p.syncedAt).toArray(),
+    db.gym_sessions.filter((g) => !g.syncedAt).toArray(),
   ]);
 
-  return { meals, chores, gestures, audits, user_profile };
+  return { meals, chores, gestures, audits, user_profile, pushup_logs, gym_sessions };
 }
 
 // Mark a batch of local records as synced with the cloud
@@ -241,6 +324,8 @@ export async function markRecordsSynced(
     gestures?: string[];
     audits?: string[];
     user_profile?: string[];
+    pushup_logs?: string[];
+    gym_sessions?: string[];
   },
   syncedAt: string = new Date().toISOString()
 ) {
@@ -271,6 +356,15 @@ export async function markRecordsSynced(
       }
     }
   );
+
+  await db.transaction('rw', db.pushup_logs, db.gym_sessions, async () => {
+    if (ids.pushup_logs?.length) {
+      await db.pushup_logs.where('id').anyOf(ids.pushup_logs).modify({ syncedAt });
+    }
+    if (ids.gym_sessions?.length) {
+      await db.gym_sessions.where('id').anyOf(ids.gym_sessions).modify({ syncedAt });
+    }
+  });
 }
 
 // Upsert the local user profile record (mirrors StorageService profile)

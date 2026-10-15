@@ -97,22 +97,26 @@ export default function VaultHub() {
     : 0;
 
   const handleExportData = async () => {
-    const [allAudits, allMeals, allGestures, allChores, allProfiles] = await Promise.all([
+    const [allAudits, allMeals, allGestures, allChores, allProfiles, allPushups, allGym] = await Promise.all([
       db.audits.toArray(),
       db.meals.toArray(),
       db.gestures.toArray(),
       db.chores.toArray(),
       db.user_profile.toArray(),
+      db.pushup_logs.toArray(),
+      db.gym_sessions.toArray(),
     ]);
 
     const backup = {
-      version: '3.0',
+      version: '4.0',
       exportedAt: new Date().toISOString(),
       user_profile: allProfiles,
       meals: allMeals,
       initiative_ledger: allGestures,
       daily_audits: allAudits,
       chores: allChores,
+      pushup_logs: allPushups,
+      gym_sessions: allGym,
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });

@@ -232,3 +232,26 @@ export interface MealRecordCloud {
   syncedAt?: string; // ISO
 }
 
+export interface PushupLogRecord {
+  id: string;
+  user_id?: string;
+  date: string; // YYYY-MM-DD
+  target_count: number;
+  completed_count: number;
+  sets: { reps: number; timestamp: string }[];
+  logged_at: string; // ISO
+  updated_at: string; // ISO
+  syncedAt?: string; // ISO
+}
+
+export interface GymSessionRecord {
+  id: string;
+  user_id?: string;
+  date: string; // YYYY-MM-DD
+  workout_type: string;
+  completed: boolean;
+  logged_at: string; // ISO
+  updated_at: string; // ISO
+  syncedAt?: string; // ISO
+}
+

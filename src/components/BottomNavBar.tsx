@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Utensils, HeartHandshake, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { LayoutDashboard, Utensils, HeartHandshake, ShieldCheck, SlidersHorizontal, ListChecks } from 'lucide-react';
 
 export const BottomNavBar: React.FC = () => {
   const pathname = usePathname();
@@ -13,6 +13,7 @@ export const BottomNavBar: React.FC = () => {
     { href: '/meals', label: 'Meals', icon: Utensils },
     { href: '/initiative', label: 'Initiative', icon: HeartHandshake },
     { href: '/vault', label: 'Vault', icon: ShieldCheck },
+    { href: '/tasks', label: 'Tasks', icon: ListChecks },
     { href: '/signup', label: 'Setup', icon: SlidersHorizontal },
   ];
 

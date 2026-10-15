@@ -74,3 +74,38 @@ CREATE POLICY "Users manage own daily audits" ON public.daily_audits
 CREATE INDEX IF NOT EXISTS idx_meals_user_updated ON public.meals (user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_initiative_user_updated ON public.initiative_ledger (user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_audits_user_updated ON public.daily_audits (user_id, updated_at);
+
+-- Pushup Logs (daily physical discipline telemetry)
+CREATE TABLE IF NOT EXISTS public.pushup_logs (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  target_count INTEGER NOT NULL DEFAULT 100,
+  completed_count INTEGER NOT NULL DEFAULT 0,
+  sets JSONB NOT NULL DEFAULT '[]'::jsonb,
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Gym Sessions (daily attendance telemetry)
+CREATE TABLE IF NOT EXISTS public.gym_sessions (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  workout_type TEXT,
+  completed BOOLEAN NOT NULL DEFAULT false,
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.pushup_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage own pushup logs" ON public.pushup_logs
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own gym sessions" ON public.gym_sessions
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_pushups_user_updated ON public.pushup_logs (user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_gym_user_updated ON public.gym_sessions (user_id, updated_at);

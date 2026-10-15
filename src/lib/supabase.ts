@@ -9,6 +9,8 @@ import {
   DailyAuditRecordCloud,
   MealRecordCloud,
   UserProfileRecord,
+  PushupLogRecord,
+  GymSessionRecord,
 } from '@/types';
 
 export function getSupabaseClient() {
@@ -597,6 +599,119 @@ export async function fetchDailyAuditsSince(
   }
 }
 
+export async function upsertPushupLogs(
+  records: PushupLogRecord[],
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!records.length) return { success: true };
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+  try {
+    const { error } = await client.from('pushup_logs').upsert(
+      records.map((r) => ({
+        id: r.id,
+        user_id: r.user_id || null,
+        date: r.date,
+        target_count: r.target_count,
+        completed_count: r.completed_count,
+        sets: r.sets,
+        logged_at: r.logged_at,
+        updated_at: r.updated_at,
+      }))
+    );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function upsertGymSessions(
+  records: GymSessionRecord[],
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!records.length) return { success: true };
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+  try {
+    const { error } = await client.from('gym_sessions').upsert(
+      records.map((r) => ({
+        id: r.id,
+        user_id: r.user_id || null,
+        date: r.date,
+        workout_type: r.workout_type,
+        completed: r.completed,
+        logged_at: r.logged_at,
+        updated_at: r.updated_at,
+      }))
+    );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function fetchPushupLogsSince(
+  userId: string,
+  sinceIso: string,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; records?: PushupLogRecord[]; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+  try {
+    const { data, error } = await client
+      .from('pushup_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('updated_at', sinceIso);
+    if (error) return { success: false, error: error.message };
+    return { success: true, records: (data || []) as PushupLogRecord[] };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function fetchGymSessionsSince(
+  userId: string,
+  sinceIso: string,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; records?: GymSessionRecord[]; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+  try {
+    const { data, error } = await client
+      .from('gym_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('updated_at', sinceIso);
+    if (error) return { success: false, error: error.message };
+    return { success: true, records: (data || []) as GymSessionRecord[] };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
 export const SUPABASE_SQL_SCHEMA = `-- RealityCheck Complete Database Schema
 -- Run this in your Supabase SQL Editor (Dashboard > SQL Editor > New query)
 
@@ -779,5 +894,40 @@ CREATE POLICY "Users manage own initiative ledger" ON public.initiative_ledger
 
 CREATE POLICY "Users manage own daily audits" ON public.daily_audits
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Pushup Logs (daily physical discipline telemetry)
+CREATE TABLE IF NOT EXISTS public.pushup_logs (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  target_count INTEGER NOT NULL DEFAULT 100,
+  completed_count INTEGER NOT NULL DEFAULT 0,
+  sets JSONB NOT NULL DEFAULT '[]'::jsonb,
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Gym Sessions (daily attendance telemetry)
+CREATE TABLE IF NOT EXISTS public.gym_sessions (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  workout_type TEXT,
+  completed BOOLEAN NOT NULL DEFAULT false,
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.pushup_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gym_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage own pushup logs" ON public.pushup_logs
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own gym sessions" ON public.gym_sessions
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_pushups_user_updated ON public.pushup_logs (user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_gym_user_updated ON public.gym_sessions (user_id, updated_at);
 `;
 
