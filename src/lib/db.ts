@@ -10,6 +10,7 @@ export interface DbMeal {
   loggedAt: string; // ISO
   isOutlier: boolean;
   outlierReason?: string;
+  syncedAt?: string; // ISO timestamp when pushed to cloud
 }
 
 export interface DbChore {
@@ -18,6 +19,7 @@ export interface DbChore {
   slot: 'morning' | 'midday' | 'evening';
   isDefault: boolean;
   completedDates: Record<string, string>; // date -> ISO timestamp
+  syncedAt?: string; // ISO timestamp when pushed to cloud
 }
 
 export interface DbGesture {
@@ -30,6 +32,7 @@ export interface DbGesture {
   details?: string;
   wasPrompted: boolean;
   isProactive: boolean; // false if wasPrompted is true
+  syncedAt?: string; // ISO timestamp when pushed to cloud
 }
 
 export interface DbAudit {
@@ -40,6 +43,7 @@ export interface DbAudit {
   maintainedComposure: boolean;
   observation?: string;
   completedAt: string;
+  syncedAt?: string; // ISO timestamp when pushed to cloud
 }
 
 export interface DbCadence {
@@ -65,6 +69,13 @@ export class RealityCheckDatabase extends Dexie {
       chores: 'id, slot, isDefault',
       gestures: 'id, date, recipient, timestamp, isProactive, wasPrompted',
       audits: 'id, date, completedAt',
+      cadences: 'id, recipient',
+    });
+    this.version(2).stores({
+      meals: 'id, date, mealType, loggedAt, isOutlier, syncedAt',
+      chores: 'id, slot, isDefault, syncedAt',
+      gestures: 'id, date, recipient, timestamp, isProactive, wasPrompted, syncedAt',
+      audits: 'id, date, completedAt, syncedAt',
       cadences: 'id, recipient',
     });
   }
@@ -182,6 +193,50 @@ export const DEFAULT_CHORES_LIST: Array<Omit<DbChore, 'completedDates'>> = [
     isDefault: true,
   },
 ];
+
+// Fetch all local records that have not yet been pushed to the cloud
+export async function getUnsyncedRecords() {
+  if (typeof window === 'undefined') {
+    return { meals: [], chores: [], gestures: [], audits: [] };
+  }
+
+  const [meals, chores, gestures, audits] = await Promise.all([
+    db.meals.filter((m) => !m.syncedAt).toArray(),
+    db.chores.filter((c) => !c.syncedAt).toArray(),
+    db.gestures.filter((g) => !g.syncedAt).toArray(),
+    db.audits.filter((a) => !a.syncedAt).toArray(),
+  ]);
+
+  return { meals, chores, gestures, audits };
+}
+
+// Mark a batch of local records as synced with the cloud
+export async function markRecordsSynced(
+  ids: {
+    meals?: string[];
+    chores?: string[];
+    gestures?: string[];
+    audits?: string[];
+  },
+  syncedAt: string = new Date().toISOString()
+) {
+  if (typeof window === 'undefined') return;
+
+  await db.transaction('rw', db.meals, db.chores, db.gestures, db.audits, async () => {
+    if (ids.meals?.length) {
+      await db.meals.where('id').anyOf(ids.meals).modify({ syncedAt });
+    }
+    if (ids.chores?.length) {
+      await db.chores.where('id').anyOf(ids.chores).modify({ syncedAt });
+    }
+    if (ids.gestures?.length) {
+      await db.gestures.where('id').anyOf(ids.gestures).modify({ syncedAt });
+    }
+    if (ids.audits?.length) {
+      await db.audits.where('id').anyOf(ids.audits).modify({ syncedAt });
+    }
+  });
+}
 
 // Apply prerequisites into Dexie Database
 export async function applyPrerequisitesToDatabase(

@@ -114,6 +114,31 @@ export interface AppSettings {
   };
 }
 
+export type ExecutionLogType = 'meal' | 'chore' | 'initiative' | 'audit';
+
+export interface CloudProfile {
+  id: string;
+  schedule: Record<string, string>;
+  meal_staples: Record<string, string>;
+  targets: {
+    relationships: string[];
+    dailyChores: string[];
+  };
+  is_onboarded: boolean;
+  updated_at?: string;
+}
+
+export interface ExecutionLogPayload {
+  id: string;
+  user_id: string;
+  date: string; // YYYY-MM-DD
+  type: ExecutionLogType;
+  title: string;
+  is_unprompted: boolean;
+  is_outlier: boolean;
+  completed_at: string; // ISO
+}
+
 export interface DayExecutionSummary {
   date: string;
   mealsCompleted: number; // 0 - 3

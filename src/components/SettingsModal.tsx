@@ -4,7 +4,8 @@ import React, { useState } from 'react';
 import { AppSettings, MealType, StapleMeal } from '@/types';
 import { playSound } from '@/lib/sound';
 import { StorageService } from '@/lib/storage';
-import { SUPABASE_SQL_SCHEMA } from '@/lib/supabase';
+import { SUPABASE_SQL_SCHEMA, testSupabaseConnection } from '@/lib/supabase';
+import { getUnsyncedRecords } from '@/lib/db';
 import {
   Settings,
   X,
@@ -42,6 +43,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(settings.supabaseConfig?.anonKey || '');
   const [supabaseEnabled, setSupabaseEnabled] = useState(settings.supabaseConfig?.enabled || false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Editable staples local copy
   const [editableStaples, setEditableStaples] = useState<Record<MealType, StapleMeal[]>>(settings.staples);
@@ -112,6 +115,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     playSound('execute', soundEnabled);
     setSaveStatus('Supabase settings saved!');
     setTimeout(() => setSaveStatus(null), 2500);
+  };
+
+  const handleTestConnection = async () => {
+    playSound('click', soundEnabled);
+    setSyncStatus('Testing connection...');
+    const result = await testSupabaseConnection(supabaseUrl, supabaseAnonKey);
+    if (result.success) {
+      playSound('execute', soundEnabled);
+      setSyncStatus(result.message);
+    } else {
+      playSound('error', soundEnabled);
+      setSyncStatus(`Error: ${result.message}`);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    playSound('click', soundEnabled);
+    setIsSyncing(true);
+    setSyncStatus('Scanning local records...');
+
+    try {
+      const unsynced = await getUnsyncedRecords();
+      const total =
+        unsynced.meals.length +
+        unsynced.chores.length +
+        unsynced.gestures.length +
+        unsynced.audits.length;
+
+      if (total === 0) {
+        setSyncStatus('All local records are already synced.');
+        setIsSyncing(false);
+        return;
+      }
+
+      setSyncStatus(
+        `Found ${total} unsynced record(s). Push requires an authenticated Supabase session.`
+      );
+      playSound('execute', soundEnabled);
+    } catch (err) {
+      playSound('error', soundEnabled);
+      setSyncStatus(err instanceof Error ? err.message : 'Sync failed.');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const handleSaveStaples = () => {
@@ -343,12 +390,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                   </div>
 
-                  <button
-                    onClick={handleSaveSupabase}
-                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded border border-zinc-700 font-semibold"
-                  >
-                    Save Supabase Credentials
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={handleSaveSupabase}
+                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded border border-zinc-700 font-semibold"
+                    >
+                      Save Supabase Credentials
+                    </button>
+                    <button
+                      onClick={handleTestConnection}
+                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded border border-zinc-700 font-semibold"
+                    >
+                      Test Connection
+                    </button>
+                    <button
+                      onClick={handleSyncNow}
+                      disabled={isSyncing}
+                      className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded border border-emerald-600 font-semibold"
+                    >
+                      {isSyncing ? 'Syncing...' : 'Sync Now'}
+                    </button>
+                  </div>
+
+                  {syncStatus && (
+                    <div className="mt-2 p-2 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-300">
+                      {syncStatus}
+                    </div>
+                  )}
                 </div>
               </div>
 

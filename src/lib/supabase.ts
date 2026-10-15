@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { StorageService } from './storage';
-import { PrerequisitesPayload } from '@/types';
+import {
+  PrerequisitesPayload,
+  CloudProfile,
+  ExecutionLogPayload,
+  ExecutionLogType,
+} from '@/types';
 
 export function getSupabaseClient() {
   const settings = StorageService.getSettings();
@@ -194,6 +199,177 @@ export async function fetchPrerequisitesFromCloud(
   }
 }
 
+export async function upsertCloudProfile(
+  userId: string,
+  profile: Omit<CloudProfile, 'id' | 'updated_at'>,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    return { success: false, error: 'No Supabase credentials provided.' };
+  }
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) {
+    return { success: false, error: 'Could not initialize Supabase client.' };
+  }
+
+  try {
+    const { error } = await client.from('profiles').upsert({
+      id: userId,
+      schedule: profile.schedule,
+      meal_staples: profile.meal_staples,
+      targets: profile.targets,
+      is_onboarded: profile.is_onboarded,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      if (error.code === '42P01') {
+        return {
+          success: false,
+          error: 'Table profiles not found. Run the SQL schema in Supabase SQL editor first.',
+        };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error upserting cloud profile';
+    return { success: false, error: msg };
+  }
+}
+
+export async function fetchCloudProfile(
+  userId: string,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; profile?: CloudProfile; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    return { success: false, error: 'No Supabase credentials provided.' };
+  }
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) {
+    return { success: false, error: 'Could not initialize Supabase client.' };
+  }
+
+  try {
+    const { data, error } = await client
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (!data) {
+      return { success: false, error: 'No cloud profile found for this user.' };
+    }
+
+    return { success: true, profile: data as CloudProfile };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error fetching cloud profile';
+    return { success: false, error: msg };
+  }
+}
+
+export async function pushExecutionLogs(
+  logs: ExecutionLogPayload[],
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!logs.length) return { success: true };
+
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    return { success: false, error: 'No Supabase credentials provided.' };
+  }
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) {
+    return { success: false, error: 'Could not initialize Supabase client.' };
+  }
+
+  try {
+    const { error } = await client.from('execution_logs').upsert(logs, {
+      onConflict: 'id',
+    });
+
+    if (error) {
+      if (error.code === '42P01') {
+        return {
+          success: false,
+          error: 'Table execution_logs not found. Run the SQL schema in Supabase SQL editor first.',
+        };
+      }
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error pushing execution logs';
+    return { success: false, error: msg };
+  }
+}
+
+export async function fetchExecutionLogs(
+  userId: string,
+  type?: ExecutionLogType,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; logs?: ExecutionLogPayload[]; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    return { success: false, error: 'No Supabase credentials provided.' };
+  }
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) {
+    return { success: false, error: 'Could not initialize Supabase client.' };
+  }
+
+  try {
+    let query = client
+      .from('execution_logs')
+      .select('*')
+      .eq('user_id', userId)
+      .order('completed_at', { ascending: false });
+
+    if (type) {
+      query = query.eq('type', type);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, logs: (data || []) as ExecutionLogPayload[] };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error fetching execution logs';
+    return { success: false, error: msg };
+  }
+}
+
 export const SUPABASE_SQL_SCHEMA = `-- RealityCheck Complete Database Schema
 -- Run this in your Supabase SQL Editor (Dashboard > SQL Editor > New query)
 
@@ -268,5 +444,41 @@ CREATE POLICY "Allow all on meals" ON reality_meals FOR ALL USING (true) WITH CH
 CREATE POLICY "Allow all on chores" ON reality_chores FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on gestures" ON reality_gestures FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all on audits" ON reality_audits FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================
+-- 3. Cloud Sync Engine Tables (auth-scoped, RLS enforced)
+-- ============================================================
+
+-- Profiles Table (Stores user onboarding schedule & preferences)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  schedule JSONB NOT NULL DEFAULT '{"wakeTime":"08:00","breakfastTime":"08:30","lunchTime":"13:00","dinnerTime":"18:30","nightResetTime":"22:30"}',
+  meal_staples JSONB NOT NULL DEFAULT '{"staple1":"Rice, Dal, Yogurt","staple2":"3 Eggs, Toast, Fruit","staple3":"Curd Rice"}',
+  targets JSONB NOT NULL DEFAULT '{"relationships":["Mother","Partner"],"dailyChores":["Sink Clear","Kitchen Counters","Desk Reset"]}',
+  is_onboarded BOOLEAN DEFAULT true,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Execution Logs Table (Stores offline/online activity entries)
+CREATE TABLE IF NOT EXISTS public.execution_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  date DATE NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('meal', 'chore', 'initiative', 'audit')),
+  title TEXT NOT NULL,
+  is_unprompted BOOLEAN DEFAULT true,
+  is_outlier BOOLEAN DEFAULT false,
+  completed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Row Level Security Policies
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.execution_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage their own profile" ON public.profiles
+  FOR ALL USING (auth.uid() = id);
+
+CREATE POLICY "Users can manage their own execution logs" ON public.execution_logs
+  FOR ALL USING (auth.uid() = user_id);
 `;
 
