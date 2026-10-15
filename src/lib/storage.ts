@@ -4,10 +4,12 @@ import {
   MealLog,
   MealType,
   NightlyAuditRecord,
+  PrerequisitesPayload,
   ProactiveGestureLog,
   RelationshipContact,
   ScheduleBlock,
   StapleMeal,
+  UserProfile,
 } from '@/types';
 import { getTodayString } from './date-utils';
 
@@ -206,22 +208,37 @@ export const DEFAULT_CONTACTS: RelationshipContact[] = [
   },
 ];
 
+export const DEFAULT_USER_PROFILE: UserProfile = {
+  name: 'Alex',
+  email: '',
+  partnerName: 'Partner',
+  partnerCadenceDays: 14,
+  partnerReminderNotes: 'Plan Friday Date Night every 2 weeks on Monday; surprise flowers & care',
+  motherName: 'Mother',
+  motherCadenceDays: 3,
+  motherReminderNotes: 'Unprompted 20-min check-in call before she needs to remind you',
+  onboarded: false,
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
   soundEnabled: true,
   militaryTime: false,
   staples: DEFAULT_STAPLES,
   contacts: DEFAULT_CONTACTS,
   scheduleBlocks: DEFAULT_SCHEDULE_BLOCKS,
+  userProfile: DEFAULT_USER_PROFILE,
 };
 
 // Storage keys
 const STORAGE_KEYS = {
   SETTINGS: 'reality_check_settings_v1',
+  PROFILE: 'reality_check_profile_v1',
   MEAL_LOGS: 'reality_check_meals_v1',
   CHORES: 'reality_check_chores_v1',
   GESTURES: 'reality_check_gestures_v1',
   AUDITS: 'reality_check_audits_v1',
   INITIALIZED: 'reality_check_seeded_v1',
+  ONBOARDED: 'reality_check_onboarded_v1',
 };
 
 export class StorageService {
@@ -329,6 +346,90 @@ export class StorageService {
       this.saveMeals(pastMeals);
       this.saveGestures(pastGestures);
       localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+    }
+  }
+
+  // Profile & Onboarding
+  public static getUserProfile(): UserProfile {
+    if (!this.isBrowser()) return DEFAULT_USER_PROFILE;
+    const raw = localStorage.getItem(STORAGE_KEYS.PROFILE);
+    if (raw) {
+      try {
+        return { ...DEFAULT_USER_PROFILE, ...JSON.parse(raw) };
+      } catch {
+        // fallback
+      }
+    }
+    const settings = this.getSettings();
+    if (settings.userProfile) {
+      return settings.userProfile;
+    }
+    return DEFAULT_USER_PROFILE;
+  }
+
+  public static saveUserProfile(profile: UserProfile): void {
+    if (!this.isBrowser()) return;
+    localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
+    const settings = this.getSettings();
+    this.saveSettings({ ...settings, userProfile: profile });
+  }
+
+  public static isOnboarded(): boolean {
+    if (!this.isBrowser()) return true;
+    const onboarded = localStorage.getItem(STORAGE_KEYS.ONBOARDED);
+    if (onboarded === 'true') return true;
+    const profile = this.getUserProfile();
+    return !!profile.onboarded;
+  }
+
+  public static setOnboarded(val: boolean = true): void {
+    if (!this.isBrowser()) return;
+    localStorage.setItem(STORAGE_KEYS.ONBOARDED, val ? 'true' : 'false');
+    const profile = this.getUserProfile();
+    this.saveUserProfile({ ...profile, onboarded: val });
+  }
+
+  public static getPrerequisitesPayload(): PrerequisitesPayload {
+    const settings = this.getSettings();
+    const profile = this.getUserProfile();
+    const chores = this.getChores();
+    return {
+      profile,
+      schedule: settings.scheduleBlocks,
+      staples: settings.staples,
+      chores,
+      contacts: settings.contacts,
+      militaryTime: settings.militaryTime,
+      soundEnabled: settings.soundEnabled,
+      supabaseConfig: settings.supabaseConfig,
+    };
+  }
+
+  public static savePrerequisites(payload: PrerequisitesPayload): void {
+    if (!this.isBrowser()) return;
+    const updatedProfile: UserProfile = {
+      ...payload.profile,
+      onboarded: true,
+      onboardedAt: payload.profile.onboardedAt || new Date().toISOString(),
+    };
+    this.saveUserProfile(updatedProfile);
+    this.setOnboarded(true);
+
+    const currentSettings = this.getSettings();
+    const updatedSettings: AppSettings = {
+      ...currentSettings,
+      scheduleBlocks: payload.schedule || currentSettings.scheduleBlocks,
+      staples: payload.staples || currentSettings.staples,
+      contacts: payload.contacts || currentSettings.contacts,
+      militaryTime: payload.militaryTime ?? currentSettings.militaryTime,
+      soundEnabled: payload.soundEnabled ?? currentSettings.soundEnabled,
+      supabaseConfig: payload.supabaseConfig ?? currentSettings.supabaseConfig,
+      userProfile: updatedProfile,
+    };
+    this.saveSettings(updatedSettings);
+
+    if (payload.chores && payload.chores.length > 0) {
+      this.saveChores(payload.chores);
     }
   }
 
