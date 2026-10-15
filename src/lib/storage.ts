@@ -12,6 +12,7 @@ import {
   UserProfile,
 } from '@/types';
 import { getTodayString } from './date-utils';
+import { upsertLocalUserProfile } from './db';
 
 export const DEFAULT_SCHEDULE_BLOCKS: ScheduleBlock[] = [
   {
@@ -371,6 +372,11 @@ export class StorageService {
       this.saveGestures(pastGestures);
       localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
     }
+
+    // Ensure the Dexie user_profile mirror exists for cloud sync
+    void upsertLocalUserProfile(
+      this.getUserProfile() as unknown as Record<string, unknown>
+    );
   }
 
   // Profile & Onboarding
@@ -396,6 +402,8 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
     const settings = this.getSettings();
     this.saveSettings({ ...settings, userProfile: profile });
+    // Mirror into Dexie so the profile participates in cloud sync
+    void upsertLocalUserProfile(profile as unknown as Record<string, unknown>);
   }
 
   public static isOnboarded(): boolean {
@@ -417,6 +425,7 @@ export class StorageService {
     };
     this.saveUserProfile(completed);
     this.setOnboarded(true);
+    void upsertLocalUserProfile(completed as unknown as Record<string, unknown>);
   }
 
   public static setOnboarded(val: boolean = true): void {
@@ -424,6 +433,7 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.ONBOARDED, val ? 'true' : 'false');
     const profile = this.getUserProfile();
     this.saveUserProfile({ ...profile, onboarded: val });
+    void upsertLocalUserProfile({ ...profile, onboarded: val } as unknown as Record<string, unknown>);
   }
 
   public static getPrerequisitesPayload(): PrerequisitesPayload {
@@ -451,6 +461,7 @@ export class StorageService {
     };
     this.saveUserProfile(updatedProfile);
     this.setOnboarded(true);
+    void upsertLocalUserProfile(updatedProfile as unknown as Record<string, unknown>);
 
     const currentSettings = this.getSettings();
     const updatedSettings: AppSettings = {
