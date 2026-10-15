@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { StorageService } from './storage';
+import { StorageService, DEFAULT_USER_PROFILE } from './storage';
 import {
   PrerequisitesPayload,
   CloudProfile,
@@ -168,6 +168,7 @@ export async function fetchPrerequisitesFromCloud(
 
     const payload: PrerequisitesPayload = {
       profile: {
+        ...DEFAULT_USER_PROFILE,
         name: data.user_name || 'Operator',
         email: data.email || '',
         partnerName: data.partner_name || 'Partner',
@@ -177,6 +178,7 @@ export async function fetchPrerequisitesFromCloud(
         motherCadenceDays: data.mother_cadence_days || 3,
         motherReminderNotes: data.mother_reminder_notes || '',
         onboarded: true,
+        onboardingCompleted: true,
         onboardedAt: data.updated_at,
       },
       schedule: Array.isArray(data.schedule) ? data.schedule : [],

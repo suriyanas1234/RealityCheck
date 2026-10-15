@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { StorageService } from '@/lib/storage';
+import { StorageService, DEFAULT_USER_PROFILE } from '@/lib/storage';
 import { UserProfile } from '@/types';
 import { playSound } from '@/lib/sound';
 import { Sparkles } from 'lucide-react';
@@ -33,13 +33,16 @@ export const OnboardingDialog: React.FC<OnboardingDialogProps> = ({
     }
 
     const profile: UserProfile = {
+      ...DEFAULT_USER_PROFILE,
       name: name.trim(),
       partnerName: partnerName.trim() || 'Partner',
       partnerCadenceDays: Math.max(1, partnerCadenceDays),
       motherName: motherName.trim() || 'Mother',
       motherCadenceDays: Math.max(1, motherCadenceDays),
       onboarded: true,
+      onboardingCompleted: true,
       onboardedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
 
     StorageService.saveUserProfile(profile);
