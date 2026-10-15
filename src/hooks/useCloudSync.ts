@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { db } from '@/lib/db';
+import { StorageService } from '@/lib/storage';
 
 export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'local_only' | 'error';
 
@@ -10,9 +11,6 @@ export function useCloudSync() {
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('local_only');
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   // Detect online / offline status
   useEffect(() => {
@@ -47,6 +45,11 @@ export function useCloudSync() {
       return;
     }
 
+    const settings = StorageService.getSettings();
+    const config = settings.supabaseConfig;
+    const supabaseUrl = (config?.enabled && config?.url ? config.url : process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim();
+    const supabaseKey = (config?.enabled && config?.anonKey ? config.anonKey : process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim();
+
     if (!supabaseUrl || !supabaseKey) {
       // Offline-first IndexedDB active
       setSyncStatus('local_only');
@@ -57,7 +60,7 @@ export function useCloudSync() {
       setSyncStatus('syncing');
       const supabase = createClient(supabaseUrl, supabaseKey);
 
-      // Push latest audits from IndexedDB to Supabase
+      // 1. Sync Audits
       const localAudits = await db.audits.toArray();
       if (localAudits.length > 0) {
         await supabase.from('reality_audits').upsert(
@@ -73,7 +76,7 @@ export function useCloudSync() {
         );
       }
 
-      // Push meals
+      // 2. Sync Meals
       const localMeals = await db.meals.toArray();
       if (localMeals.length > 0) {
         await supabase.from('reality_meals').upsert(
@@ -88,13 +91,44 @@ export function useCloudSync() {
         );
       }
 
+      // 3. Sync Chores
+      const localChores = await db.chores.toArray();
+      if (localChores.length > 0) {
+        await supabase.from('reality_chores').upsert(
+          localChores.map((c) => ({
+            id: c.id,
+            title: c.title,
+            slot: c.slot,
+            completed_dates: c.completedDates || {},
+            is_default: c.isDefault ?? false,
+          }))
+        );
+      }
+
+      // 4. Sync Gestures
+      const localGestures = await db.gestures.toArray();
+      if (localGestures.length > 0) {
+        await supabase.from('reality_gestures').upsert(
+          localGestures.map((g) => ({
+            id: g.id,
+            recipient_id: g.recipient,
+            recipient_name: g.recipientName,
+            date: g.date,
+            timestamp: g.timestamp,
+            gesture_type: g.action,
+            details: g.details,
+            was_prompted: g.wasPrompted,
+          }))
+        );
+      }
+
       setLastSyncedAt(new Date());
       setSyncStatus('synced');
     } catch (err) {
       console.warn('Cloud sync note:', err);
       setSyncStatus('local_only');
     }
-  }, [supabaseUrl, supabaseKey]);
+  }, []);
 
   useEffect(() => {
     triggerSync();
