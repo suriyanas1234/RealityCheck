@@ -209,15 +209,39 @@ export const DEFAULT_CONTACTS: RelationshipContact[] = [
 ];
 
 export const DEFAULT_USER_PROFILE: UserProfile = {
-  name: 'Alex',
+  name: '',
   email: '',
+  focusAreas: [],
+  isOfflineOnly: false,
   partnerName: 'Partner',
   partnerCadenceDays: 14,
   partnerReminderNotes: 'Plan Friday Date Night every 2 weeks on Monday; surprise flowers & care',
-  motherName: 'Mother',
+  motherName: 'Mom',
   motherCadenceDays: 3,
   motherReminderNotes: 'Unprompted 20-min check-in call before she needs to remind you',
+  anchors: {
+    morningReset: '08:00',
+    breakfast: '08:30',
+    lunch: '13:00',
+    eveningReset: '18:30',
+    dayClosure: '22:30',
+  },
+  cadences: {
+    partnerName: 'Partner',
+    momName: 'Mom',
+    dateIntervalDays: 14,
+    gestureIntervalDays: 14,
+    momCheckinIntervalDays: 3,
+  },
+  chores: [
+    'Morning Sink Clear & Dry',
+    'Kitchen Counter Sanitized',
+    'Desk & Workspace Reset',
+    'Evening Sink Zero',
+  ],
+  createdAt: new Date().toISOString(),
   onboarded: false,
+  onboardingCompleted: false,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -379,7 +403,20 @@ export class StorageService {
     const onboarded = localStorage.getItem(STORAGE_KEYS.ONBOARDED);
     if (onboarded === 'true') return true;
     const profile = this.getUserProfile();
-    return !!profile.onboarded;
+    return !!profile.onboarded || !!profile.onboardingCompleted;
+  }
+
+  public static saveOnboardingProfile(profile: UserProfile): void {
+    if (!this.isBrowser()) return;
+    const completed: UserProfile = {
+      ...profile,
+      onboarded: true,
+      onboardingCompleted: true,
+      onboardedAt: profile.onboardedAt || new Date().toISOString(),
+      createdAt: profile.createdAt || new Date().toISOString(),
+    };
+    this.saveUserProfile(completed);
+    this.setOnboarded(true);
   }
 
   public static setOnboarded(val: boolean = true): void {

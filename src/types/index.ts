@@ -73,15 +73,35 @@ export interface NightlyAuditRecord {
 }
 
 export interface UserProfile {
+  id?: string;
   name: string;
   email?: string;
+  focusAreas: string[];
+  isOfflineOnly: boolean;
   partnerName: string;
   partnerCadenceDays: number;
   partnerReminderNotes?: string;
   motherName: string;
   motherCadenceDays: number;
   motherReminderNotes?: string;
+  anchors: {
+    morningReset: string;
+    breakfast: string;
+    lunch: string;
+    eveningReset: string;
+    dayClosure: string;
+  };
+  cadences: {
+    partnerName: string;
+    momName: string;
+    dateIntervalDays: number;
+    gestureIntervalDays: number;
+    momCheckinIntervalDays: number;
+  };
+  chores: string[];
+  createdAt: string;
   onboarded: boolean;
+  onboardingCompleted: boolean;
   onboardedAt?: string;
 }
 

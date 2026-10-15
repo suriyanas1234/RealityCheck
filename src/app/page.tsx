@@ -6,7 +6,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, DbMeal, DbChore, seedDatabaseIfEmpty } from '@/lib/db';
 import { getTodayString, getCurrentAndNextBlock, formatMinutesCountdown } from '@/lib/date-utils';
 import { TopHeader } from '@/components/TopHeader';
-import { OnboardingDialog } from '@/components/OnboardingDialog';
+import { OnboardingModal } from '@/components/OnboardingModal';
 import { StorageService } from '@/lib/storage';
 import { playSound } from '@/lib/sound';
 import {
@@ -42,7 +42,7 @@ export default function TodayExecutionHub() {
   useEffect(() => {
     seedDatabaseIfEmpty();
     const profile = StorageService.getUserProfile();
-    if (!profile.onboarded) {
+    if (!profile.onboarded && !profile.onboardingCompleted) {
       setShowOnboarding(true);
     }
     const d = new Date();
@@ -135,7 +135,7 @@ export default function TodayExecutionHub() {
     <div className="min-h-screen bg-[#191919] text-[#E3E3E3]">
       <TopHeader pageTitle="Execution Hub" icon="🎯" />
 
-      <OnboardingDialog
+      <OnboardingModal
         isOpen={showOnboarding}
         onComplete={() => setShowOnboarding(false)}
       />
