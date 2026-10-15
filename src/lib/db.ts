@@ -169,6 +169,18 @@ export class RealityCheckDatabase extends Dexie {
       tasks: 'id, completed, priority, updatedAt',
       groceries: 'id, category, checked, updatedAt',
     });
+    this.version(5).stores({
+      meals: 'id, date, mealType, loggedAt, isOutlier, updatedAt, syncedAt',
+      chores: 'id, slot, isDefault, updatedAt, syncedAt',
+      gestures: 'id, date, recipient, timestamp, actionType, isProactive, wasPrompted, updatedAt, syncedAt',
+      audits: 'id, date, completedAt, updatedAt, syncedAt',
+      cadences: 'id, recipient',
+      user_profile: 'id, updatedAt, syncedAt',
+      pushup_logs: 'id, date, updatedAt, syncedAt',
+      gym_sessions: 'id, date, updatedAt, syncedAt',
+      tasks: 'id, completed, priority, updatedAt',
+      groceries: 'id, category, checked, updatedAt',
+    });
   }
 }
 
