@@ -300,20 +300,20 @@ export async function applyPrerequisitesToDatabase(
 export async function seedDatabaseIfEmpty() {
   if (typeof window === 'undefined') return;
 
-  const choresCount = await db.chores.count();
-  if (choresCount === 0) {
-    const today = getTodayString();
+  await db.transaction('rw', db.chores, db.cadences, db.audits, db.meals, db.gestures, async () => {
+    const choresCount = await db.chores.count();
+    if (choresCount !== 0) return;
 
-    // Insert chores
+    // Insert chores (put = idempotent, avoids ConstraintError on re-run)
     for (const chore of DEFAULT_CHORES_LIST) {
-      await db.chores.add({
+      await db.chores.put({
         ...chore,
         completedDates: {},
       });
     }
 
     // Insert Cadences
-    await db.cadences.bulkAdd([
+    await db.cadences.bulkPut([
       {
         id: 'cadence-date-night',
         title: 'Plan Complete Date (Activity + Food + Logistics)',
@@ -343,93 +343,7 @@ export async function seedDatabaseIfEmpty() {
       },
     ]);
 
-    // Seed 25 days of realistic historical audit records for the 30-day consistency vault
-    const todayObj = new Date();
-    for (let i = 26; i >= 1; i--) {
-      const d = new Date(todayObj);
-      d.setDate(d.getDate() - i);
-      const dateStr = getTodayString(d);
-
-      const mealsAdhered = i !== 14 && i !== 21;
-      const choresDone = i !== 8;
-      const composure = i !== 17 && i !== 4;
-
-      await db.audits.put({
-        id: dateStr,
-        date: dateStr,
-        adheredMeals: mealsAdhered,
-        completedChores: choresDone,
-        maintainedComposure: composure,
-        observation: !composure
-          ? 'Work stress triggered defensiveness. Paused 10 seconds before replying.'
-          : undefined,
-        completedAt: new Date(d.setHours(22, 35, 0, 0)).toISOString(),
-      });
-
-      // Seed past meals
-      await db.meals.put({
-        id: `meal-bf-${dateStr}`,
-        date: dateStr,
-        mealType: 'breakfast',
-        mealName: 'Quick Plate',
-        loggedAt: new Date(d.setHours(8, 32, 0, 0)).toISOString(),
-        isOutlier: false,
-      });
-
-      await db.meals.put({
-        id: `meal-lu-${dateStr}`,
-        date: dateStr,
-        mealType: 'lunch',
-        mealName: '5-Min Eggs / Toast',
-        loggedAt: new Date(d.setHours(13, 8, 0, 0)).toISOString(),
-        isOutlier: false,
-      });
-
-      await db.meals.put({
-        id: `meal-di-${dateStr}`,
-        date: dateStr,
-        mealType: 'dinner',
-        mealName: 'Comfort Rice Bowl',
-        loggedAt: new Date(d.setHours(18, 45, 0, 0)).toISOString(),
-        isOutlier: false,
-      });
-    }
-
-    // Seed past verified gestures
-    await db.gestures.bulkAdd([
-      {
-        id: 'g-seed-1',
-        date: getTodayString(new Date(Date.now() - 5 * 86400000)),
-        timestamp: new Date(Date.now() - 5 * 86400000).toISOString(),
-        recipient: 'partner',
-        recipientName: 'Partner',
-        action: 'Planned Friday Date Night',
-        details: 'Selected venue, booked table at 7:30 PM, sent calendar invite without prompting.',
-        wasPrompted: false,
-        isProactive: true,
-      },
-      {
-        id: 'g-seed-2',
-        date: getTodayString(new Date(Date.now() - 6 * 86400000)),
-        timestamp: new Date(Date.now() - 6 * 86400000).toISOString(),
-        recipient: 'partner',
-        recipientName: 'Partner',
-        action: 'Fresh Lilies & Matcha Treat',
-        details: 'Delivered to her work desk during afternoon break unprompted.',
-        wasPrompted: false,
-        isProactive: true,
-      },
-      {
-        id: 'g-seed-3',
-        date: getTodayString(new Date(Date.now() - 2 * 86400000)),
-        timestamp: new Date(Date.now() - 2 * 86400000).toISOString(),
-        recipient: 'mother',
-        recipientName: 'Mother',
-        action: 'Unprompted 20-Min Call',
-        details: 'Asked about her week and listened without multitasking.',
-        wasPrompted: false,
-        isProactive: true,
-      },
-    ]);
-  }
+    // No demo history is seeded. All meals, audits, and gestures are
+    // entered by the user and persisted in IndexedDB from that point on.
+  });
 }

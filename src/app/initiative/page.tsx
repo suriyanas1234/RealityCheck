@@ -62,8 +62,8 @@ export default function InitiativeHub() {
     const isProactive = !wasPrompted;
     const now = new Date();
 
-    await db.gestures.add({
-      id: `gesture-${Date.now()}`,
+    await db.gestures.put({
+      id: `gesture-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       date: todayDate,
       timestamp: now.toISOString(),
       recipient,

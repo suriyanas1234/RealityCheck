@@ -105,8 +105,8 @@ export default function TodayExecutionHub() {
     e.preventDefault();
     if (!newChoreTitle.trim()) return;
     playSound('click', true);
-    await db.chores.add({
-      id: `chore-${Date.now()}`,
+    await db.chores.put({
+      id: `chore-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title: newChoreTitle.trim(),
       slot: 'midday',
       isDefault: false,
