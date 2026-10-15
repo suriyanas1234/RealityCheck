@@ -224,76 +224,198 @@ export default function InitiativeHub() {
           </div>
         </div>
 
-        {/* Cadence Cards (Bi-Weekly Partner Date & Gestures, Mom Check-in) */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs uppercase tracking-wider text-[#838383] font-semibold">
-              Automated Cadence Prompts
-            </h3>
-            <button
-              onClick={() => {
-                setWasPrompted(null);
-                setDetails('');
-                setIsModalOpen(true);
-              }}
-              className="px-2.5 py-1 bg-[#202020] hover:bg-[#282828] border border-[#373737] rounded text-xs text-[#337EA9] font-medium flex items-center gap-1"
+        {/* Recipient Sub-Tabs */}
+        <div className="flex items-center gap-2 border-b border-[#373737] pb-2">
+          <button
+            onClick={() => {
+              playSound('click', true);
+              setActiveTab('partner');
+            }}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+              activeTab === 'partner'
+                ? 'bg-[#252525] text-[#E3E3E3] border border-[#373737]'
+                : 'text-[#838383] hover:text-[#E3E3E3]'
+            }`}
+          >
+            <HeartHandshake className="w-3.5 h-3.5" />
+            <span>Partner</span>
+          </button>
+          <button
+            onClick={() => {
+              playSound('click', true);
+              setActiveTab('mother');
+            }}
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+              activeTab === 'mother'
+                ? 'bg-[#252525] text-[#E3E3E3] border border-[#373737]'
+                : 'text-[#838383] hover:text-[#E3E3E3]'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Mother / Family</span>
+          </button>
+        </div>
+
+        {/* PARTNER TAB */}
+        {activeTab === 'partner' && (
+          <div className="space-y-4">
+            {/* Cadence Countdown Card */}
+            <div
+              className={`notion-panel p-4 border-l-4 ${
+                partnerIsDue ? 'border-l-[#D9730D]' : 'border-l-[#2B593F]'
+              }`}
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Log Action</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3">
-            {cadences?.map((cadence) => {
-              const daysAgo = cadence.lastCompletedDate
-                ? getDayDifference(cadence.lastCompletedDate, todayDate)
-                : 999;
-              const isDue = daysAgo >= cadence.cadenceDays;
-
-              return (
-                <div
-                  key={cadence.id}
-                  className={`notion-panel p-4 transition-all ${
-                    isDue ? 'border-l-4 border-l-[#D9730D]' : 'border-l-4 border-l-[#2B593F]'
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-mono text-[#838383] block">
+                    Bi-Weekly Cadence
+                  </span>
+                  <h4 className="text-sm font-semibold text-[#E3E3E3] mt-0.5">
+                    Next Date / Gesture Target
+                  </h4>
+                  <p className="text-[11px] text-[#838383] mt-1">
+                    {partnerIsDue
+                      ? `Overdue by ${partnerDaysAgo - partnerCadenceDays} day(s). Execute a proactive date or gesture.`
+                      : `${partnerDaysRemaining} day(s) remaining until next target.`}
+                  </p>
+                </div>
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold shrink-0 ${
+                    partnerIsDue
+                      ? 'bg-[#291f15] border border-[#523215] text-[#D9730D]'
+                      : 'bg-[#1e2f26] border border-[#2B593F] text-[#446B5E]'
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#191919] border border-[#373737] text-[#838383]">
-                          {cadence.recipient}
-                        </span>
-                        <h4 className="text-sm font-semibold text-[#E3E3E3]">{cadence.title}</h4>
-                      </div>
-                      <p className="text-[11px] text-[#838383] mt-1.5 leading-snug">
-                        {cadence.instructions}
-                      </p>
-                    </div>
+                  {partnerIsDue ? 'Action Due' : 'Nominal'}
+                </span>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-[#373737] flex items-center justify-between text-[11px] font-mono text-[#838383]">
+                <span>Cadence: Every {partnerCadenceDays} days</span>
+                <span>
+                  {partnerCadence?.lastCompletedDate
+                    ? `Last: ${partnerDaysAgo} day${partnerDaysAgo === 1 ? '' : 's'} ago`
+                    : 'No logs yet'}
+                </span>
+              </div>
+            </div>
 
-                    <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold shrink-0 ${
-                        isDue
-                          ? 'bg-[#291f15] border border-[#523215] text-[#D9730D]'
-                          : 'bg-[#1e2f26] border border-[#2B593F] text-[#446B5E]'
-                      }`}
-                    >
-                      {isDue ? 'Action Due' : 'Nominal'}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 pt-2.5 border-t border-[#373737] flex items-center justify-between text-[11px] font-mono text-[#838383]">
-                    <span>Cadence: Every {cadence.cadenceDays} days</span>
-                    <span>
-                      {cadence.lastCompletedDate
-                        ? `Last: ${daysAgo} day${daysAgo === 1 ? '' : 's'} ago`
-                        : 'No logs yet'}
-                    </span>
-                  </div>
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                onClick={() => openModal('partner', 'date_plan')}
+                className="notion-panel p-3 text-left hover:bg-[#252525] transition-colors flex items-center gap-2"
+              >
+                <Calendar className="w-4 h-4 text-[#337EA9]" />
+                <div>
+                  <span className="text-xs font-medium text-[#E3E3E3] block">Date Planning</span>
+                  <span className="text-[10px] text-[#838383]">Activity + Food + Logistics</span>
                 </div>
-              );
-            })}
+              </button>
+              <button
+                onClick={() => openModal('partner', 'gesture')}
+                className="notion-panel p-3 text-left hover:bg-[#252525] transition-colors flex items-center gap-2"
+              >
+                <Flower2 className="w-4 h-4 text-[#D9730D]" />
+                <div>
+                  <span className="text-xs font-medium text-[#E3E3E3] block">Unprompted Gesture</span>
+                  <span className="text-[10px] text-[#838383]">Flowers, treats, surprises</span>
+                </div>
+              </button>
+              <button
+                onClick={() => openModal('partner', 'chore_takeover')}
+                className="notion-panel p-3 text-left hover:bg-[#252525] transition-colors flex items-center gap-2"
+              >
+                <Home className="w-4 h-4 text-[#446B5E]" />
+                <div>
+                  <span className="text-xs font-medium text-[#E3E3E3] block">Chore Takeover</span>
+                  <span className="text-[10px] text-[#838383]">Own a shared task fully</span>
+                </div>
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* MOTHER / FAMILY TAB */}
+        {activeTab === 'mother' && (
+          <div className="space-y-4">
+            {/* 3-Day Text Check-in Countdown */}
+            <div
+              className={`notion-panel p-4 border-l-4 ${
+                motherIsDue ? 'border-l-[#D9730D]' : 'border-l-[#2B593F]'
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-mono text-[#838383] block">
+                    3-Day Text Check-in Cadence
+                  </span>
+                  <h4 className="text-sm font-semibold text-[#E3E3E3] mt-0.5">
+                    Days Since Last Text Update
+                  </h4>
+                  <p className="text-[11px] text-[#838383] mt-1">
+                    {motherIsDue
+                      ? `⚠️ Action Required — ${motherDaysAgo} days since last unprompted text update.`
+                      : `${motherDaysAgo} day(s) since last text update. Nominal.`}
+                  </p>
+                </div>
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold shrink-0 ${
+                    motherIsDue
+                      ? 'bg-[#291f15] border border-[#523215] text-[#D9730D]'
+                      : 'bg-[#1e2f26] border border-[#2B593F] text-[#446B5E]'
+                  }`}
+                >
+                  {motherIsDue ? '⚠️ Action Required' : 'Nominal'}
+                </span>
+              </div>
+              <div className="mt-3 pt-2.5 border-t border-[#373737] flex items-center justify-between text-[11px] font-mono text-[#838383]">
+                <span>Cadence: Every {motherCadenceDays} days</span>
+                <span>
+                  {motherCadence?.lastCompletedDate
+                    ? `Last: ${motherDaysAgo} day${motherDaysAgo === 1 ? '' : 's'} ago`
+                    : 'No logs yet'}
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Log Action */}
+            <button
+              onClick={handleQuickDayUpdate}
+              className="w-full notion-panel p-3 hover:bg-[#252525] transition-colors flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-[#337EA9]" />
+                <div className="text-left">
+                  <span className="text-xs font-medium text-[#E3E3E3] block">
+                    Logged Daily Day Update Text
+                  </span>
+                  <span className="text-[10px] text-[#838383]">
+                    1-tap log — marks as Proactive Initiative
+                  </span>
+                </div>
+              </div>
+              <Plus className="w-4 h-4 text-[#838383]" />
+            </button>
+
+            <button
+              onClick={() => openModal('mother', 'day_update_text')}
+              className="w-full notion-panel p-3 hover:bg-[#252525] transition-colors flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#D9730D]" />
+                <div className="text-left">
+                  <span className="text-xs font-medium text-[#E3E3E3] block">
+                    Log with Details
+                  </span>
+                  <span className="text-[10px] text-[#838383]">
+                    Note what you shared in the update
+                  </span>
+                </div>
+              </div>
+              <Plus className="w-4 h-4 text-[#838383]" />
+            </button>
+          </div>
+        )}
 
         {/* Proactive Ledger (Log of Proactive vs Reactive actions) */}
         <div className="notion-panel p-4">
@@ -308,21 +430,26 @@ export default function InitiativeHub() {
             </div>
           </div>
 
-          {gestures?.length === 0 ? (
+          {filteredGestures.length === 0 ? (
             <div className="py-8 text-center text-xs text-[#838383]">
-              No initiative records yet. Log your first unprompted gesture.
+              No initiative records yet for this recipient. Log your first unprompted action.
             </div>
           ) : (
             <div className="divide-y divide-[#373737] text-xs">
-              {gestures?.map((g) => (
+              {filteredGestures.map((g) => (
                 <div key={g.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-[#202020] border border-[#373737] text-[#838383]">
                         {g.recipientName}
                       </span>
+                      {g.actionType && (
+                        <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-[#191919] border border-[#373737] text-[#838383]">
+                          {CATEGORY_LABELS[g.actionType]}
+                        </span>
+                      )}
                       <span className="font-medium text-[#E3E3E3]">{g.action}</span>
-                      
+
                       {/* Proactive vs Reactive Badge */}
                       {g.isProactive ? (
                         <span className="text-[10px] font-mono text-[#446B5E] bg-[#1e2f26] border border-[#2B593F] px-1.5 rounded">
@@ -338,6 +465,11 @@ export default function InitiativeHub() {
                     {g.details && (
                       <p className="text-[11px] text-[#838383] mt-1 pl-0.5 leading-snug">
                         {g.details}
+                      </p>
+                    )}
+                    {g.scheduledDate && (
+                      <p className="text-[10px] text-[#337EA9] mt-1 pl-0.5 font-mono">
+                        Scheduled: {g.scheduledDate}
                       </p>
                     )}
                   </div>
