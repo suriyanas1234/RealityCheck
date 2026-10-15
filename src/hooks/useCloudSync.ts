@@ -38,6 +38,7 @@ export function useCloudSync() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('local_only');
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
+  const [lastError, setLastError] = useState<string | null>(null);
   const clientRef = useRef<SupabaseClient | null>(null);
   const syncingRef = useRef<boolean>(false);
 
@@ -79,11 +80,13 @@ export function useCloudSync() {
     const creds = resolveCredentials();
     if (!creds) {
       setSyncStatus('local_only');
-      return { pushed: 0, pulled: 0 };
+      setLastError('No Supabase credentials found. Add them in Settings or .env.local.');
+      return { pushed: 0, pulled: 0, error: 'No Supabase credentials found.' };
     }
 
     syncingRef.current = true;
     setSyncStatus('syncing');
+    setLastError(null);
 
     try {
       if (!clientRef.current) {
@@ -94,12 +97,19 @@ export function useCloudSync() {
       const supabase = clientRef.current;
 
       // Require an authenticated session for RLS-scoped sync
-      const { data: sessionData } = await supabase.auth.getSession();
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        setSyncStatus('error');
+        setLastError(`Auth session error: ${sessionError.message}`);
+        syncingRef.current = false;
+        return { pushed: 0, pulled: 0, error: sessionError.message };
+      }
       const userId = sessionData?.session?.user?.id;
       if (!userId) {
         setSyncStatus('local_only');
+        setLastError('Not signed in. Sign in with Google to enable cloud sync.');
         syncingRef.current = false;
-        return { pushed: 0, pulled: 0 };
+        return { pushed: 0, pulled: 0, error: 'Not signed in.' };
       }
 
       const lastSyncIso =
@@ -118,7 +128,11 @@ export function useCloudSync() {
             updated_at: p.updatedAt,
           };
           const res = await upsertUserProfileRecord(record, creds.url, creds.anonKey);
-          if (res.success) pushed++;
+          if (res.success) {
+            pushed++;
+          } else {
+            setLastError(`Profile push failed: ${res.error}`);
+          }
         }
         await markRecordsSynced({ user_profile: unsynced.user_profile.map((p) => p.id) });
       }
@@ -140,6 +154,8 @@ export function useCloudSync() {
         if (res.success) {
           pushed += records.length;
           await markRecordsSynced({ meals: unsynced.meals.map((m) => m.id) });
+        } else {
+          setLastError(`Meals push failed: ${res.error}`);
         }
       }
 
@@ -161,6 +177,8 @@ export function useCloudSync() {
         if (res.success) {
           pushed += records.length;
           await markRecordsSynced({ gestures: unsynced.gestures.map((g) => g.id) });
+        } else {
+          setLastError(`Initiative ledger push failed: ${res.error}`);
         }
       }
 
@@ -180,6 +198,8 @@ export function useCloudSync() {
         if (res.success) {
           pushed += records.length;
           await markRecordsSynced({ audits: unsynced.audits.map((a) => a.id) });
+        } else {
+          setLastError(`Daily audits push failed: ${res.error}`);
         }
       }
 
@@ -253,10 +273,12 @@ export function useCloudSync() {
       syncingRef.current = false;
       return { pushed, pulled };
     } catch (err) {
-      console.warn('Cloud sync note:', err);
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      console.error('Cloud sync error:', err);
       setSyncStatus('error');
+      setLastError(msg);
       syncingRef.current = false;
-      return { pushed: 0, pulled: 0, error: err instanceof Error ? err.message : 'Sync failed' };
+      return { pushed: 0, pulled: 0, error: msg };
     }
   }, [lastSyncedAt, refreshPendingCount]);
 
@@ -295,6 +317,7 @@ export function useCloudSync() {
     syncStatus,
     lastSyncedAt,
     pendingCount,
+    lastError,
     triggerSync,
   };
 }

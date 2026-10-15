@@ -39,8 +39,9 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
   todayDate,
   onSelectDate,
 }) => {
-  const { isOnline, syncStatus, pendingCount, triggerSync } = useCloudSync();
+  const { isOnline, syncStatus, pendingCount, lastError, triggerSync } = useCloudSync();
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const [showSyncError, setShowSyncError] = useState(false);
 
   useEffect(() => {
     setCurrentTime(new Date());
@@ -72,9 +73,13 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
           <div className="flex items-center justify-between md:justify-start gap-4">
             <div className="flex items-center gap-2.5">
               <button
-                onClick={() => {
+                onClick={async () => {
                   playSound('click', soundEnabled);
-                  triggerSync();
+                  const result = await triggerSync();
+                  if (result.error) {
+                    setShowSyncError(true);
+                    setTimeout(() => setShowSyncError(false), 6000);
+                  }
                 }}
                 className="flex items-center gap-1.5 group"
                 title={
@@ -221,6 +226,22 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
           </div>
 
         </div>
+
+        {/* Sync Error Banner */}
+        {showSyncError && lastError && (
+          <div className="pb-2 flex items-center justify-between text-xs font-mono bg-zinc-900/60 border border-amber-900/40 text-amber-300 px-3 py-1.5 rounded mb-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span>SYNC: {lastError}</span>
+            </div>
+            <button
+              onClick={() => setShowSyncError(false)}
+              className="underline text-zinc-300 hover:text-white"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Date Context Indicator (If user is viewing a past date) */}
         {!isToday && (
