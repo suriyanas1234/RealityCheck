@@ -10,6 +10,7 @@ export interface DbMeal {
   loggedAt: string; // ISO
   isOutlier: boolean;
   outlierReason?: string;
+  updatedAt: string; // ISO timestamp of last local mutation
   syncedAt?: string; // ISO timestamp when pushed to cloud
 }
 
@@ -19,6 +20,7 @@ export interface DbChore {
   slot: 'morning' | 'midday' | 'evening';
   isDefault: boolean;
   completedDates: Record<string, string>; // date -> ISO timestamp
+  updatedAt: string; // ISO timestamp of last local mutation
   syncedAt?: string; // ISO timestamp when pushed to cloud
 }
 
@@ -29,9 +31,12 @@ export interface DbGesture {
   recipient: 'partner' | 'mother' | 'custom';
   recipientName: string;
   action: string;
+  actionType?: 'date_plan' | 'gesture' | 'chore_takeover' | 'day_update_text';
   details?: string;
+  scheduledDate?: string; // YYYY-MM-DD for date plans
   wasPrompted: boolean;
   isProactive: boolean; // false if wasPrompted is true
+  updatedAt: string; // ISO timestamp of last local mutation
   syncedAt?: string; // ISO timestamp when pushed to cloud
 }
 
@@ -43,6 +48,14 @@ export interface DbAudit {
   maintainedComposure: boolean;
   observation?: string;
   completedAt: string;
+  updatedAt: string; // ISO timestamp of last local mutation
+  syncedAt?: string; // ISO timestamp when pushed to cloud
+}
+
+export interface DbUserProfile {
+  id: string; // 'default_profile' or auth uid
+  data: Record<string, unknown>; // serialized UserProfile
+  updatedAt: string; // ISO timestamp of last local mutation
   syncedAt?: string; // ISO timestamp when pushed to cloud
 }
 
@@ -61,6 +74,7 @@ export class RealityCheckDatabase extends Dexie {
   gestures!: Table<DbGesture, string>;
   audits!: Table<DbAudit, string>;
   cadences!: Table<DbCadence, string>;
+  user_profile!: Table<DbUserProfile, string>;
 
   constructor() {
     super('RealityCheck_PWA_v2');
@@ -77,6 +91,14 @@ export class RealityCheckDatabase extends Dexie {
       gestures: 'id, date, recipient, timestamp, isProactive, wasPrompted, syncedAt',
       audits: 'id, date, completedAt, syncedAt',
       cadences: 'id, recipient',
+    });
+    this.version(3).stores({
+      meals: 'id, date, mealType, loggedAt, isOutlier, updatedAt, syncedAt',
+      chores: 'id, slot, isDefault, updatedAt, syncedAt',
+      gestures: 'id, date, recipient, timestamp, isProactive, wasPrompted, updatedAt, syncedAt',
+      audits: 'id, date, completedAt, updatedAt, syncedAt',
+      cadences: 'id, recipient',
+      user_profile: 'id, updatedAt, syncedAt',
     });
   }
 }
@@ -197,17 +219,18 @@ export const DEFAULT_CHORES_LIST: Array<Omit<DbChore, 'completedDates'>> = [
 // Fetch all local records that have not yet been pushed to the cloud
 export async function getUnsyncedRecords() {
   if (typeof window === 'undefined') {
-    return { meals: [], chores: [], gestures: [], audits: [] };
+    return { meals: [], chores: [], gestures: [], audits: [], user_profile: [] };
   }
 
-  const [meals, chores, gestures, audits] = await Promise.all([
+  const [meals, chores, gestures, audits, user_profile] = await Promise.all([
     db.meals.filter((m) => !m.syncedAt).toArray(),
     db.chores.filter((c) => !c.syncedAt).toArray(),
     db.gestures.filter((g) => !g.syncedAt).toArray(),
     db.audits.filter((a) => !a.syncedAt).toArray(),
+    db.user_profile.filter((p) => !p.syncedAt).toArray(),
   ]);
 
-  return { meals, chores, gestures, audits };
+  return { meals, chores, gestures, audits, user_profile };
 }
 
 // Mark a batch of local records as synced with the cloud
@@ -217,24 +240,52 @@ export async function markRecordsSynced(
     chores?: string[];
     gestures?: string[];
     audits?: string[];
+    user_profile?: string[];
   },
   syncedAt: string = new Date().toISOString()
 ) {
   if (typeof window === 'undefined') return;
 
-  await db.transaction('rw', db.meals, db.chores, db.gestures, db.audits, async () => {
-    if (ids.meals?.length) {
-      await db.meals.where('id').anyOf(ids.meals).modify({ syncedAt });
+  await db.transaction(
+    'rw',
+    db.meals,
+    db.chores,
+    db.gestures,
+    db.audits,
+    db.user_profile,
+    async () => {
+      if (ids.meals?.length) {
+        await db.meals.where('id').anyOf(ids.meals).modify({ syncedAt });
+      }
+      if (ids.chores?.length) {
+        await db.chores.where('id').anyOf(ids.chores).modify({ syncedAt });
+      }
+      if (ids.gestures?.length) {
+        await db.gestures.where('id').anyOf(ids.gestures).modify({ syncedAt });
+      }
+      if (ids.audits?.length) {
+        await db.audits.where('id').anyOf(ids.audits).modify({ syncedAt });
+      }
+      if (ids.user_profile?.length) {
+        await db.user_profile.where('id').anyOf(ids.user_profile).modify({ syncedAt });
+      }
     }
-    if (ids.chores?.length) {
-      await db.chores.where('id').anyOf(ids.chores).modify({ syncedAt });
-    }
-    if (ids.gestures?.length) {
-      await db.gestures.where('id').anyOf(ids.gestures).modify({ syncedAt });
-    }
-    if (ids.audits?.length) {
-      await db.audits.where('id').anyOf(ids.audits).modify({ syncedAt });
-    }
+  );
+}
+
+// Upsert the local user profile record (mirrors StorageService profile)
+export async function upsertLocalUserProfile(
+  profile: Record<string, unknown>,
+  id: string = 'default_profile'
+): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const now = new Date().toISOString();
+  const existing = await db.user_profile.get(id);
+  await db.user_profile.put({
+    id,
+    data: profile,
+    updatedAt: now,
+    syncedAt: existing?.syncedAt,
   });
 }
 
@@ -258,11 +309,13 @@ export async function applyPrerequisitesToDatabase(
         slot: c.slot,
         isDefault: c.isDefault ?? false,
         completedDates: {},
+        updatedAt: new Date().toISOString(),
       });
     } else {
       await db.chores.update(c.id, {
         title: c.title,
         slot: c.slot,
+        updatedAt: new Date().toISOString(),
       });
     }
   }
@@ -309,6 +362,7 @@ export async function seedDatabaseIfEmpty() {
       await db.chores.put({
         ...chore,
         completedDates: {},
+        updatedAt: new Date().toISOString(),
       });
     }
 

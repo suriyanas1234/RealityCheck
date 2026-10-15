@@ -5,6 +5,10 @@ import {
   CloudProfile,
   ExecutionLogPayload,
   ExecutionLogType,
+  InitiativeLedgerEntry,
+  DailyAuditRecordCloud,
+  MealRecordCloud,
+  UserProfileRecord,
 } from '@/types';
 
 export function getSupabaseClient() {
@@ -372,6 +376,227 @@ export async function fetchExecutionLogs(
   }
 }
 
+// ============================================================
+// Cloud Sync Engine — Push/Pull helpers for the new schema
+// ============================================================
+
+export async function upsertUserProfileRecord(
+  record: UserProfileRecord,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+
+  try {
+    const { error } = await client.from('profiles').upsert({
+      id: record.id,
+      user_id: record.user_id || null,
+      data: record.data,
+      updated_at: record.updated_at,
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function upsertMealRecords(
+  records: MealRecordCloud[],
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!records.length) return { success: true };
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+
+  try {
+    const { error } = await client.from('meals').upsert(
+      records.map((r) => ({
+        id: r.id,
+        user_id: r.user_id || null,
+        date: r.date,
+        meal_type: r.meal_type,
+        staple_id: r.staple_id || null,
+        custom_meal_name: r.custom_meal_name || null,
+        scheduled_window: r.scheduled_window || null,
+        is_outlier: r.is_outlier,
+        outlier_reason: r.outlier_reason || null,
+        logged_at: r.logged_at,
+        updated_at: r.updated_at,
+      }))
+    );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function upsertInitiativeLedger(
+  records: InitiativeLedgerEntry[],
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!records.length) return { success: true };
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+
+  try {
+    const { error } = await client.from('initiative_ledger').upsert(
+      records.map((r) => ({
+        id: r.id,
+        user_id: r.user_id || null,
+        recipient: r.recipient,
+        recipient_name: r.recipient_name,
+        action_type: r.action_type,
+        description: r.description,
+        details: r.details || null,
+        scheduled_date: r.scheduled_date || null,
+        is_reactive: r.is_reactive,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      }))
+    );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function upsertDailyAudits(
+  records: DailyAuditRecordCloud[],
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!records.length) return { success: true };
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+
+  try {
+    const { error } = await client.from('daily_audits').upsert(
+      records.map((r) => ({
+        id: r.id,
+        user_id: r.user_id || null,
+        date: r.date,
+        meals_adhered: r.meals_adhered,
+        chores_executed: r.chores_executed,
+        composure_maintained: r.composure_maintained,
+        observation: r.observation || null,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      }))
+    );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function fetchMealsSince(
+  userId: string,
+  sinceIso: string,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; records?: MealRecordCloud[]; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+
+  try {
+    const { data, error } = await client
+      .from('meals')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('updated_at', sinceIso);
+    if (error) return { success: false, error: error.message };
+    return { success: true, records: (data || []) as MealRecordCloud[] };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function fetchInitiativeLedgerSince(
+  userId: string,
+  sinceIso: string,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; records?: InitiativeLedgerEntry[]; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+
+  try {
+    const { data, error } = await client
+      .from('initiative_ledger')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('updated_at', sinceIso);
+    if (error) return { success: false, error: error.message };
+    return { success: true, records: (data || []) as InitiativeLedgerEntry[] };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function fetchDailyAuditsSince(
+  userId: string,
+  sinceIso: string,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; records?: DailyAuditRecordCloud[]; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+
+  try {
+    const { data, error } = await client
+      .from('daily_audits')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('updated_at', sinceIso);
+    if (error) return { success: false, error: error.message };
+    return { success: true, records: (data || []) as DailyAuditRecordCloud[] };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
 export const SUPABASE_SQL_SCHEMA = `-- RealityCheck Complete Database Schema
 -- Run this in your Supabase SQL Editor (Dashboard > SQL Editor > New query)
 
@@ -482,5 +707,77 @@ CREATE POLICY "Users can manage their own profile" ON public.profiles
 
 CREATE POLICY "Users can manage their own execution logs" ON public.execution_logs
   FOR ALL USING (auth.uid() = user_id);
+
+-- ============================================================
+-- 4. Cloud Sync Engine Tables (auth-scoped, RLS enforced)
+-- ============================================================
+
+-- Profiles (mirrors local user_profile)
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Meals
+CREATE TABLE IF NOT EXISTS public.meals (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  meal_type TEXT NOT NULL,
+  staple_id TEXT,
+  custom_meal_name TEXT,
+  scheduled_window TEXT,
+  is_outlier BOOLEAN NOT NULL DEFAULT false,
+  outlier_reason TEXT,
+  logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Initiative Ledger
+CREATE TABLE IF NOT EXISTS public.initiative_ledger (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  recipient TEXT NOT NULL,
+  recipient_name TEXT NOT NULL,
+  action_type TEXT NOT NULL,
+  description TEXT NOT NULL,
+  details TEXT,
+  scheduled_date DATE,
+  is_reactive BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Daily Audits
+CREATE TABLE IF NOT EXISTS public.daily_audits (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  date DATE NOT NULL,
+  meals_adhered BOOLEAN NOT NULL DEFAULT false,
+  chores_executed BOOLEAN NOT NULL DEFAULT false,
+  composure_maintained BOOLEAN NOT NULL DEFAULT false,
+  observation TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.meals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.initiative_ledger ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.daily_audits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage own profile" ON public.profiles
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own meals" ON public.meals
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own initiative ledger" ON public.initiative_ledger
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users manage own daily audits" ON public.daily_audits
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 `;
 

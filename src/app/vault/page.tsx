@@ -78,6 +78,7 @@ export default function VaultHub() {
       maintainedComposure: composureYes,
       observation: observation.trim() || undefined,
       completedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     });
 
     setIsSaved(true);
@@ -96,17 +97,21 @@ export default function VaultHub() {
     : 0;
 
   const handleExportData = async () => {
-    const allAudits = await db.audits.toArray();
-    const allMeals = await db.meals.toArray();
-    const allGestures = await db.gestures.toArray();
-    const allChores = await db.chores.toArray();
+    const [allAudits, allMeals, allGestures, allChores, allProfiles] = await Promise.all([
+      db.audits.toArray(),
+      db.meals.toArray(),
+      db.gestures.toArray(),
+      db.chores.toArray(),
+      db.user_profile.toArray(),
+    ]);
 
     const backup = {
-      version: '2.0',
+      version: '3.0',
       exportedAt: new Date().toISOString(),
-      audits: allAudits,
+      user_profile: allProfiles,
       meals: allMeals,
-      gestures: allGestures,
+      initiative_ledger: allGestures,
+      daily_audits: allAudits,
       chores: allChores,
     };
 
@@ -114,7 +119,7 @@ export default function VaultHub() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `realitycheck-vault-backup-${todayDate}.json`;
+    a.download = `forge-telemetry-${todayDate}.json`;
     a.click();
     URL.revokeObjectURL(url);
     playSound('execute', true);
@@ -192,6 +197,16 @@ export default function VaultHub() {
               </span>
             </div>
           </div>
+
+          {/* Empty State */}
+          {(!audits || audits.length === 0) && (
+            <div className="notion-callout mb-3">
+              <span className="text-base select-none">ℹ️</span>
+              <div className="text-xs leading-relaxed text-[#CCCCCC]">
+                No audit history logged yet. Complete tonight&apos;s 2-minute audit to begin building your consistency matrix.
+              </div>
+            </div>
+          )}
 
           {/* Grid Blocks */}
           <div className="grid grid-cols-6 sm:grid-cols-10 gap-1.5 font-mono text-xs">

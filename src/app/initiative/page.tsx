@@ -1,35 +1,46 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, DbGesture, DbCadence, seedDatabaseIfEmpty } from '@/lib/db';
+import { db, seedDatabaseIfEmpty } from '@/lib/db';
 import { getTodayString, getDayDifference } from '@/lib/date-utils';
 import { TopHeader } from '@/components/TopHeader';
 import { playSound } from '@/lib/sound';
 import {
   HeartHandshake,
-  ShieldAlert,
   Calendar,
-  Check,
   Plus,
   Trash2,
-  Clock,
   Sparkles,
-  AlertCircle,
-  HelpCircle
+  MessageSquare,
+  Flower2,
+  Home
 } from 'lucide-react';
+
+type RecipientTab = 'partner' | 'mother';
+type ActionCategory = 'date_plan' | 'gesture' | 'chore_takeover' | 'day_update_text';
+
+const CATEGORY_LABELS: Record<ActionCategory, string> = {
+  date_plan: 'Date Plan',
+  gesture: 'Gesture',
+  chore_takeover: 'Chore Takeover',
+  day_update_text: 'Day Update Text',
+};
 
 export default function InitiativeHub() {
   const [mounted, setMounted] = useState(false);
   const [todayDate, setTodayDate] = useState('');
-  
+  const [activeTab, setActiveTab] = useState<RecipientTab>('partner');
+
   // Modal / Entry Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [recipient, setRecipient] = useState<'partner' | 'mother' | 'custom'>('partner');
   const [recipientName, setRecipientName] = useState('Partner');
-  const [actionTitle, setActionTitle] = useState('Complete Date Planned (Activity + Food + Logistics)');
+  const [actionTitle, setActionTitle] = useState('');
+  const [category, setCategory] = useState<ActionCategory>('gesture');
   const [details, setDetails] = useState('');
-  
+  const [scheduledDate, setScheduledDate] = useState('');
+
   // Mandatory Binary Check: Was this prompted?
   // null = unanswered, false = unprompted (valid), true = prompted (reactive!)
   const [wasPrompted, setWasPrompted] = useState<boolean | null>(null);
@@ -50,11 +61,61 @@ export default function InitiativeHub() {
   const proactiveCount = gestures?.filter((g) => g.isProactive).length || 0;
   const reactiveCount = gestures?.filter((g) => !g.isProactive).length || 0;
 
+  // Partner cadence: days since last partner action
+  const partnerCadence = cadences?.find((c) => c.recipient === 'Partner');
+  const partnerDaysAgo = partnerCadence?.lastCompletedDate
+    ? getDayDifference(partnerCadence.lastCompletedDate, todayDate)
+    : 999;
+  const partnerCadenceDays = partnerCadence?.cadenceDays || 14;
+  const partnerDaysRemaining = Math.max(0, partnerCadenceDays - partnerDaysAgo);
+  const partnerIsDue = partnerDaysAgo >= partnerCadenceDays;
+
+  // Mother cadence: days since last text update
+  const motherCadence = cadences?.find((c) => c.recipient === 'Mother');
+  const motherDaysAgo = motherCadence?.lastCompletedDate
+    ? getDayDifference(motherCadence.lastCompletedDate, todayDate)
+    : 999;
+  const motherCadenceDays = motherCadence?.cadenceDays || 3;
+  const motherIsDue = motherDaysAgo > motherCadenceDays;
+
+  const filteredGestures = useMemo(() => {
+    if (!gestures) return [];
+    return gestures.filter((g) =>
+      activeTab === 'partner' ? g.recipient === 'partner' : g.recipient === 'mother'
+    );
+  }, [gestures, activeTab]);
+
+  const openModal = (tab: RecipientTab, presetCategory?: ActionCategory) => {
+    setRecipient(tab);
+    setRecipientName(tab === 'partner' ? 'Partner' : 'Mother');
+    setCategory(presetCategory || (tab === 'partner' ? 'gesture' : 'day_update_text'));
+    setActionTitle(
+      presetCategory === 'date_plan'
+        ? 'Complete Date Planned'
+        : presetCategory === 'day_update_text'
+        ? 'Daily Day Update Text'
+        : presetCategory === 'chore_takeover'
+        ? 'Chore Takeover'
+        : ''
+    );
+    setDetails('');
+    setScheduledDate('');
+    setWasPrompted(null);
+    setErrorMsg(null);
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (wasPrompted === null) {
       setErrorMsg('Mandatory Initiative Check: You must declare if this was prompted.');
+      playSound('error', true);
+      return;
+    }
+
+    if (!actionTitle.trim()) {
+      setErrorMsg('Action title is required.');
       playSound('error', true);
       return;
     }
@@ -67,11 +128,15 @@ export default function InitiativeHub() {
       date: todayDate,
       timestamp: now.toISOString(),
       recipient,
-      recipientName: recipient === 'partner' ? 'Partner' : recipient === 'mother' ? 'Mother' : recipientName,
-      action: actionTitle,
+      recipientName:
+        recipient === 'partner' ? 'Partner' : recipient === 'mother' ? 'Mother' : recipientName,
+      action: actionTitle.trim(),
+      actionType: category,
       details: details.trim() || undefined,
+      scheduledDate: scheduledDate || undefined,
       wasPrompted,
       isProactive,
+      updatedAt: now.toISOString(),
     });
 
     // Update cadence lastCompletedDate if applicable
@@ -92,6 +157,29 @@ export default function InitiativeHub() {
     setDetails('');
     setWasPrompted(null);
     setErrorMsg(null);
+  };
+
+  const handleQuickDayUpdate = async () => {
+    const now = new Date();
+    await db.gestures.put({
+      id: `gesture-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date: todayDate,
+      timestamp: now.toISOString(),
+      recipient: 'mother',
+      recipientName: 'Mother',
+      action: 'Logged Daily Day Update Text',
+      actionType: 'day_update_text',
+      wasPrompted: false,
+      isProactive: true,
+      updatedAt: now.toISOString(),
+    });
+
+    const match = cadences?.find((c) => c.recipient === 'Mother');
+    if (match) {
+      await db.cadences.update(match.id, { lastCompletedDate: todayDate });
+    }
+
+    playSound('execute', true);
   };
 
   const handleDeleteGesture = async (id: string) => {
@@ -304,7 +392,6 @@ export default function InitiativeHub() {
                     onClick={() => {
                       setRecipient('partner');
                       setRecipientName('Partner');
-                      setActionTitle('Complete Date Planned (Activity + Food + Logistics)');
                     }}
                     className={`p-2 rounded border text-left ${
                       recipient === 'partner'
@@ -321,7 +408,6 @@ export default function InitiativeHub() {
                     onClick={() => {
                       setRecipient('mother');
                       setRecipientName('Mother');
-                      setActionTitle('Unprompted Check-in Call');
                     }}
                     className={`p-2 rounded border text-left ${
                       recipient === 'mother'
@@ -330,35 +416,75 @@ export default function InitiativeHub() {
                     }`}
                   >
                     <span className="font-medium block">Mother</span>
-                    <span className="text-[10px] text-[#838383]">Call / Check-in</span>
+                    <span className="text-[10px] text-[#838383]">Text / Check-in</span>
                   </button>
+                </div>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-[#838383] text-[10px] uppercase font-semibold mb-1">
+                  Category
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(Object.keys(CATEGORY_LABELS) as ActionCategory[]).map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => {
+                        playSound('click', true);
+                        setCategory(cat);
+                      }}
+                      className={`p-2 rounded border text-left text-[11px] transition-colors ${
+                        category === cat
+                          ? 'bg-[#252525] border-[#838383] text-[#E3E3E3] font-semibold'
+                          : 'bg-[#191919] border-[#373737] text-[#838383]'
+                      }`}
+                    >
+                      {CATEGORY_LABELS[cat]}
+                    </button>
+                  ))}
                 </div>
               </div>
 
               {/* Action Description */}
               <div>
                 <label className="block text-[#838383] text-[10px] uppercase font-semibold mb-1">
-                  Action Title
+                  Title / Action Description
                 </label>
                 <input
                   type="text"
                   value={actionTitle}
                   onChange={(e) => setActionTitle(e.target.value)}
-                  className="w-full bg-[#191919] border border-[#373737] rounded px-3 py-1.5 text-xs text-[#E3E3E3] focus:outline-none focus:border-[#337EA9]"
+                  placeholder="e.g. Complete Date Planned (Activity + Food + Logistics)"
+                  className="w-full bg-[#191919] border border-[#373737] rounded px-3 py-1.5 text-xs text-[#E3E3E3] placeholder-[#838383] focus:outline-none focus:border-[#337EA9]"
                   required
+                />
+              </div>
+
+              {/* Scheduled Date */}
+              <div>
+                <label className="block text-[#838383] text-[10px] uppercase font-semibold mb-1">
+                  Target / Scheduled Date (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  className="w-full bg-[#191919] border border-[#373737] rounded px-3 py-1.5 text-xs text-[#E3E3E3] focus:outline-none focus:border-[#337EA9]"
                 />
               </div>
 
               {/* Details */}
               <div>
                 <label className="block text-[#838383] text-[10px] uppercase font-semibold mb-1">
-                  Execution Notes (Optional)
+                  Specific Details (Optional)
                 </label>
                 <textarea
                   rows={2}
                   value={details}
                   onChange={(e) => setDetails(e.target.value)}
-                  placeholder="e.g. Booked table at 7:30pm and ordered her favorite flowers without asking."
+                  placeholder="e.g. Booked table at 7:30pm, ordered her favorite flowers, logistics: pickup at 7:00pm."
                   className="w-full bg-[#191919] border border-[#373737] rounded px-3 py-1.5 text-xs text-[#E3E3E3] placeholder-[#838383] focus:outline-none focus:border-[#337EA9]"
                 />
               </div>

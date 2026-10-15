@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { ScheduleBlock } from '@/types';
 import { formatMinutesCountdown, getCurrentAndNextBlock } from '@/lib/date-utils';
 import { playSound } from '@/lib/sound';
+import { useCloudSync } from '@/hooks/useCloudSync';
 import {
   Clock,
   Volume2,
@@ -38,6 +39,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
   todayDate,
   onSelectDate,
 }) => {
+  const { isOnline, syncStatus, pendingCount, triggerSync } = useCloudSync();
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
 
   useEffect(() => {
@@ -69,7 +71,41 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
           {/* Logo & Operational ID */}
           <div className="flex items-center justify-between md:justify-start gap-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-3 h-3 bg-emerald-500 rounded-xs animate-pulse" />
+              <button
+                onClick={() => {
+                  playSound('click', soundEnabled);
+                  triggerSync();
+                }}
+                className="flex items-center gap-1.5 group"
+                title={
+                  syncStatus === 'synced'
+                    ? 'Cloud synced'
+                    : syncStatus === 'syncing'
+                    ? 'Syncing…'
+                    : syncStatus === 'offline'
+                    ? 'Offline — queued locally'
+                    : syncStatus === 'error'
+                    ? 'Sync error — retry'
+                    : 'Local-only mode'
+                }
+              >
+                <span
+                  className={`w-3 h-3 rounded-xs transition-colors ${
+                    syncStatus === 'synced'
+                      ? 'bg-[#446B5E]'
+                      : syncStatus === 'syncing'
+                      ? 'bg-[#337EA9] animate-pulse'
+                      : syncStatus === 'offline' || syncStatus === 'error'
+                      ? 'bg-[#D9730D]'
+                      : 'bg-zinc-600'
+                  }`}
+                />
+                {pendingCount > 0 && (
+                  <span className="text-[10px] font-mono text-[#D9730D]">
+                    {pendingCount}
+                  </span>
+                )}
+              </button>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs tracking-wider text-emerald-400 font-semibold uppercase">
@@ -81,7 +117,7 @@ export const HeaderHUD: React.FC<HeaderHUDProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-zinc-500 font-mono hidden sm:block">
-                  Objective Discipline Engine • Zero-Passivity
+                  {isOnline ? 'Objective Discipline Engine • Zero-Passivity' : 'Offline — Local Queue Active'}
                 </p>
               </div>
             </div>

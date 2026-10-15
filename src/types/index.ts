@@ -169,3 +169,66 @@ export interface DayExecutionSummary {
   unpromptedGesturesCount: number;
 }
 
+// ============================================================
+// Cloud Sync Engine Types
+// ============================================================
+
+export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'local_only' | 'error';
+
+export interface SyncResult {
+  pushed: number;
+  pulled: number;
+  error?: string;
+}
+
+export interface UserProfileRecord {
+  id: string; // 'default_profile' or auth uid
+  user_id?: string;
+  data: UserProfile;
+  updated_at: string; // ISO
+  syncedAt?: string; // ISO
+}
+
+export interface InitiativeLedgerEntry {
+  id: string;
+  user_id?: string;
+  recipient: 'partner' | 'mother' | 'custom';
+  recipient_name: string;
+  action_type: 'date_plan' | 'gesture' | 'chore_takeover' | 'day_update_text';
+  description: string;
+  details?: string;
+  scheduled_date?: string; // YYYY-MM-DD
+  is_reactive: boolean; // true = prompted/reactive, false = proactive
+  created_at: string; // ISO
+  updated_at: string; // ISO
+  syncedAt?: string; // ISO
+}
+
+export interface DailyAuditRecordCloud {
+  id: string;
+  user_id?: string;
+  date: string; // YYYY-MM-DD
+  meals_adhered: boolean;
+  chores_executed: boolean;
+  composure_maintained: boolean;
+  observation?: string;
+  created_at: string; // ISO
+  updated_at: string; // ISO
+  syncedAt?: string; // ISO
+}
+
+export interface MealRecordCloud {
+  id: string;
+  user_id?: string;
+  date: string; // YYYY-MM-DD
+  meal_type: MealType;
+  staple_id?: string;
+  custom_meal_name?: string;
+  scheduled_window?: string;
+  is_outlier: boolean;
+  outlier_reason?: string;
+  logged_at: string; // ISO
+  updated_at: string; // ISO
+  syncedAt?: string; // ISO
+}
+
