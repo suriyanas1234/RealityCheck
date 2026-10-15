@@ -72,12 +72,41 @@ export interface NightlyAuditRecord {
   completedAt: string; // ISO timestamp
 }
 
+export interface UserProfile {
+  name: string;
+  email?: string;
+  partnerName: string;
+  partnerCadenceDays: number;
+  partnerReminderNotes?: string;
+  motherName: string;
+  motherCadenceDays: number;
+  motherReminderNotes?: string;
+  onboarded: boolean;
+  onboardedAt?: string;
+}
+
+export interface PrerequisitesPayload {
+  profile: UserProfile;
+  schedule: ScheduleBlock[];
+  staples: Record<MealType, StapleMeal[]>;
+  chores: ChoreItem[];
+  contacts: RelationshipContact[];
+  militaryTime?: boolean;
+  soundEnabled?: boolean;
+  supabaseConfig?: {
+    enabled: boolean;
+    url: string;
+    anonKey: string;
+  };
+}
+
 export interface AppSettings {
   soundEnabled: boolean;
   militaryTime: boolean;
   staples: Record<MealType, StapleMeal[]>;
   contacts: RelationshipContact[];
   scheduleBlocks: ScheduleBlock[];
+  userProfile?: UserProfile;
   supabaseConfig?: {
     enabled: boolean;
     url: string;
@@ -94,3 +123,4 @@ export interface DayExecutionSummary {
   auditScore: number; // 0 - 3
   unpromptedGesturesCount: number;
 }
+

@@ -183,6 +183,64 @@ export const DEFAULT_CHORES_LIST: Array<Omit<DbChore, 'completedDates'>> = [
   },
 ];
 
+// Apply prerequisites into Dexie Database
+export async function applyPrerequisitesToDatabase(
+  choresList: Array<{ id: string; title: string; slot: 'morning' | 'midday' | 'evening'; isDefault?: boolean }>,
+  partnerName: string = 'Partner',
+  partnerCadenceDays: number = 14,
+  motherName: string = 'Mother',
+  motherCadenceDays: number = 3
+) {
+  if (typeof window === 'undefined') return;
+
+  // 1. Sync chores
+  for (const c of choresList) {
+    const existing = await db.chores.get(c.id);
+    if (!existing) {
+      await db.chores.put({
+        id: c.id,
+        title: c.title,
+        slot: c.slot,
+        isDefault: c.isDefault ?? false,
+        completedDates: {},
+      });
+    } else {
+      await db.chores.update(c.id, {
+        title: c.title,
+        slot: c.slot,
+      });
+    }
+  }
+
+  // 2. Update Cadences
+  await db.cadences.put({
+    id: 'cadence-date-night',
+    title: `Plan Complete Date for ${partnerName} (Activity + Food + Logistics)`,
+    recipient: partnerName,
+    cadenceDays: partnerCadenceDays,
+    lastCompletedDate: getTodayString(new Date(Date.now() - 5 * 86400000)),
+    instructions: `Bi-weekly prompt: Book complete date for ${partnerName} without asking partner to make decisions or research venues.`,
+  });
+
+  await db.cadences.put({
+    id: 'cadence-unprompted-gesture',
+    title: `Unprompted Flower / Care Gesture for ${partnerName}`,
+    recipient: partnerName,
+    cadenceDays: partnerCadenceDays,
+    lastCompletedDate: getTodayString(new Date(Date.now() - 6 * 86400000)),
+    instructions: `Bi-weekly prompt: Deliver favorite flowers or surprise treat to ${partnerName} unprompted.`,
+  });
+
+  await db.cadences.put({
+    id: 'cadence-mom-call',
+    title: `Unprompted Check-in Call with ${motherName}`,
+    recipient: motherName,
+    cadenceDays: motherCadenceDays,
+    lastCompletedDate: getTodayString(new Date(Date.now() - 2 * 86400000)),
+    instructions: `Reach out to ${motherName} unprompted before any reminder is needed.`,
+  });
+}
+
 // Seed initial database
 export async function seedDatabaseIfEmpty() {
   if (typeof window === 'undefined') return;
