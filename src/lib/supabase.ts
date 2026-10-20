@@ -55,19 +55,19 @@ export async function testSupabaseConnection(
     }
 
     const client = createClient(cleanUrl, cleanKey);
-    // Attempt a light read to verify network & anon key validity
-    const { error } = await client.from('reality_prerequisites').select('id').limit(1);
+    // Light read against the profiles table (created by 001_init.sql)
+    const { error } = await client.from('profiles').select('id').limit(1);
 
     if (!error) {
       return {
         success: true,
         tableReady: true,
-        message: 'Successfully connected! Prerequisite schema table is active and verified.',
+        message: 'Successfully connected! Profiles schema table is active and verified.',
       };
     }
 
-    // Code 42P01 means table does not exist yet, but credentials & network are 100% valid!
-    if (error.code === '42P01' || error.message?.includes('relation "reality_prerequisites" does not exist')) {
+    // 42P01 means the table does not exist yet, but credentials & network are valid.
+    if (error.code === '42P01' || error.message?.includes('relation "profiles" does not exist')) {
       return {
         success: true,
         tableReady: false,
@@ -87,6 +87,7 @@ export async function testSupabaseConnection(
 
 export async function savePrerequisitesToCloud(
   payload: PrerequisitesPayload,
+  userId: string,
   urlOverride?: string,
   keyOverride?: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -104,25 +105,11 @@ export async function savePrerequisitesToCloud(
   }
 
   try {
-    const recordId = payload.profile.email?.trim() || 'default_profile';
-    const { error } = await client.from('reality_prerequisites').upsert({
-      id: recordId,
-      user_name: payload.profile.name,
-      email: payload.profile.email || null,
-      partner_name: payload.profile.partnerName,
-      partner_cadence_days: payload.profile.partnerCadenceDays,
-      partner_reminder_notes: payload.profile.partnerReminderNotes || null,
-      mother_name: payload.profile.motherName,
-      mother_cadence_days: payload.profile.motherCadenceDays,
-      mother_reminder_notes: payload.profile.motherReminderNotes || null,
-      schedule: payload.schedule,
-      staples: payload.staples,
-      chores: payload.chores,
-      contacts: payload.contacts,
-      settings: {
-        militaryTime: payload.militaryTime,
-        soundEnabled: payload.soundEnabled,
-      },
+    const id = userId || payload.profile.email?.trim() || 'default_profile';
+    const { error } = await client.from('profiles').upsert({
+      id,
+      user_id: userId || null,
+      data: payload,
       updated_at: new Date().toISOString(),
     });
 
@@ -130,7 +117,7 @@ export async function savePrerequisitesToCloud(
       if (error.code === '42P01') {
         return {
           success: false,
-          error: 'Table reality_prerequisites not found in Supabase. Please run the SQL schema in Supabase SQL editor first.',
+          error: 'Table profiles not found in Supabase. Run the SQL schema (001_init.sql) in the Supabase SQL editor first.',
         };
       }
       return { success: false, error: error.message };
@@ -144,11 +131,16 @@ export async function savePrerequisitesToCloud(
 }
 
 export async function fetchPrerequisitesFromCloud(
-  url: string,
-  anonKey: string
+  userId: string,
+  urlOverride?: string,
+  keyOverride?: string
 ): Promise<{ success: boolean; payload?: PrerequisitesPayload; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
   if (!url || !anonKey) {
-    return { success: false, error: 'URL and Anon Key are required.' };
+    return { success: false, error: 'Supabase URL and Anon Key are required.' };
   }
 
   const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
@@ -157,50 +149,23 @@ export async function fetchPrerequisitesFromCloud(
   }
 
   try {
+    const id = userId || 'default_profile';
     const { data, error } = await client
-      .from('reality_prerequisites')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .limit(1)
+      .from('profiles')
+      .select('data')
+      .eq('id', id)
       .maybeSingle();
 
     if (error) {
       return { success: false, error: error.message };
     }
 
-    if (!data) {
-      return { success: false, error: 'No prerequisite data found in this Supabase database.' };
+    if (!data || !data.data) {
+      return { success: false, error: 'No prerequisite data found for your account in Supabase.' };
     }
 
-    const payload: PrerequisitesPayload = {
-      profile: {
-        ...DEFAULT_USER_PROFILE,
-        name: data.user_name || 'Operator',
-        email: data.email || '',
-        partnerName: data.partner_name || 'Partner',
-        partnerCadenceDays: data.partner_cadence_days || 14,
-        partnerReminderNotes: data.partner_reminder_notes || '',
-        motherName: data.mother_name || 'Mother',
-        motherCadenceDays: data.mother_cadence_days || 3,
-        motherReminderNotes: data.mother_reminder_notes || '',
-        onboarded: true,
-        onboardingCompleted: true,
-        onboardedAt: data.updated_at,
-      },
-      schedule: Array.isArray(data.schedule) ? data.schedule : [],
-      staples: data.staples && typeof data.staples === 'object' ? data.staples : ({} as any),
-      chores: Array.isArray(data.chores) ? data.chores : [],
-      contacts: Array.isArray(data.contacts) ? data.contacts : [],
-      militaryTime: data.settings?.militaryTime ?? false,
-      soundEnabled: data.settings?.soundEnabled ?? true,
-      supabaseConfig: {
-        enabled: true,
-        url: url.trim(),
-        anonKey: anonKey.trim(),
-      },
-    };
-
-    return { success: true, payload };
+    const stored = data.data as PrerequisitesPayload;
+    return { success: true, payload: stored };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error fetching from cloud';
     return { success: false, error: msg };

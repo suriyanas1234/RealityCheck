@@ -56,8 +56,33 @@ export default function TasksHub() {
     setMounted(true);
   }, []);
 
-  const tasks = useLiveQuery(() => db.tasks.orderBy('createdAt').reverse().toArray(), []);
-  const groceries = useLiveQuery(() => db.groceries.orderBy('createdAt').reverse().toArray(), []);
+  const tasks = useLiveQuery(
+    async () => {
+      try {
+        const items = await db.tasks.toArray();
+        return items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      } catch (err) {
+        console.warn('Failed to fetch tasks from Dexie:', err);
+        return [];
+      }
+    },
+    [],
+    []
+  );
+
+  const groceries = useLiveQuery(
+    async () => {
+      try {
+        const items = await db.groceries.toArray();
+        return items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      } catch (err) {
+        console.warn('Failed to fetch groceries from Dexie:', err);
+        return [];
+      }
+    },
+    [],
+    []
+  );
 
   const [todayStr, setTodayStr] = useState('');
 
@@ -68,88 +93,120 @@ export default function TasksHub() {
   const filteredTasks = useMemo(() => {
     if (!tasks) return [];
     if (taskFilter === 'active') return tasks.filter((t) => !t.completed);
-    return tasks.filter((t) => t.completed && t.completedAt?.startsWith(todayStr));
+    return tasks.filter((t) => t.completed && (!todayStr || t.completedAt?.startsWith(todayStr)));
   }, [tasks, taskFilter, todayStr]);
 
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskTitle.trim()) return;
-    playSound('execute', true);
-    const now = new Date().toISOString();
-    const task: DbTask = {
-      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: taskTitle.trim(),
-      priority: taskPriority,
-      completed: false,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await db.tasks.put(task);
-    setTaskTitle('');
+    try {
+      playSound('execute', true);
+      const now = new Date().toISOString();
+      const task: DbTask = {
+        id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        title: taskTitle.trim(),
+        priority: taskPriority,
+        completed: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.tasks.put(task);
+      setTaskTitle('');
+    } catch (err) {
+      console.error('Failed to add task:', err);
+    }
   };
 
   const toggleTask = async (task: DbTask) => {
-    playSound('execute', true);
-    const now = new Date().toISOString();
-    await db.tasks.update(task.id, {
-      completed: !task.completed,
-      completedAt: !task.completed ? now : undefined,
-      updatedAt: now,
-    });
+    try {
+      playSound('execute', true);
+      const now = new Date().toISOString();
+      await db.tasks.update(task.id, {
+        completed: !task.completed,
+        completedAt: !task.completed ? now : undefined,
+        updatedAt: now,
+      });
+    } catch (err) {
+      console.error('Failed to toggle task:', err);
+    }
   };
 
   const deleteTask = async (id: string) => {
-    playSound('click', true);
-    await db.tasks.delete(id);
+    try {
+      playSound('click', true);
+      await db.tasks.delete(id);
+    } catch (err) {
+      console.error('Failed to delete task:', err);
+    }
   };
 
   const addGrocery = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groceryName.trim()) return;
-    playSound('execute', true);
-    const now = new Date().toISOString();
-    const item: DbGroceryItem = {
-      id: `groc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: groceryName.trim(),
-      category: groceryCategory,
-      checked: false,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await db.groceries.put(item);
-    setGroceryName('');
+    try {
+      playSound('execute', true);
+      const now = new Date().toISOString();
+      const item: DbGroceryItem = {
+        id: `groc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: groceryName.trim(),
+        category: groceryCategory,
+        checked: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.groceries.put(item);
+      setGroceryName('');
+    } catch (err) {
+      console.error('Failed to add grocery:', err);
+    }
   };
 
   const addQuickStaple = async (name: string, category: GroceryCategory) => {
-    playSound('execute', true);
-    const now = new Date().toISOString();
-    await db.groceries.put({
-      id: `groc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      category,
-      checked: false,
-      createdAt: now,
-      updatedAt: now,
-    });
+    try {
+      playSound('execute', true);
+      const now = new Date().toISOString();
+      await db.groceries.put({
+        id: `groc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        category,
+        checked: false,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (err) {
+      console.error('Failed to add quick staple:', err);
+    }
   };
 
   const toggleGrocery = async (item: DbGroceryItem) => {
-    playSound('click', true);
-    await db.groceries.update(item.id, {
-      checked: !item.checked,
-      updatedAt: new Date().toISOString(),
-    });
+    try {
+      playSound('click', true);
+      await db.groceries.update(item.id, {
+        checked: !item.checked,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Failed to toggle grocery:', err);
+    }
   };
 
   const deleteGrocery = async (id: string) => {
-    playSound('click', true);
-    await db.groceries.delete(id);
+    try {
+      playSound('click', true);
+      await db.groceries.delete(id);
+    } catch (err) {
+      console.error('Failed to delete grocery:', err);
+    }
   };
 
   const clearCompletedGroceries = async () => {
-    playSound('execute', true);
-    const done = (groceries || []).filter((g) => g.checked);
-    await Promise.all(done.map((g) => db.groceries.delete(g.id)));
+    try {
+      playSound('execute', true);
+      const done = (groceries || []).filter((g) => g.checked);
+      await Promise.all(done.map((g) => db.groceries.delete(g.id)));
+    } catch (err) {
+      console.error('Failed to clear completed groceries:', err);
+    }
   };
 
   if (!mounted) {

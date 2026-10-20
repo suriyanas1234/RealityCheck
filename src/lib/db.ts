@@ -181,6 +181,10 @@ export class RealityCheckDatabase extends Dexie {
       tasks: 'id, completed, priority, updatedAt',
       groceries: 'id, category, checked, updatedAt',
     });
+    this.version(6).stores({
+      tasks: 'id, completed, priority, createdAt, updatedAt',
+      groceries: 'id, category, checked, createdAt, updatedAt',
+    });
   }
 }
 

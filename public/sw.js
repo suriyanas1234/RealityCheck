@@ -1,7 +1,7 @@
 // RealityCheck Service Worker
 // Enables PWA offline caching and local high-priority notifications.
 
-const CACHE_NAME = 'realitycheck-forge-v1';
+const CACHE_NAME = 'realitycheck-forge-v2';
 const APP_SHELL = ['/', '/manifest.json', '/icon.svg', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {

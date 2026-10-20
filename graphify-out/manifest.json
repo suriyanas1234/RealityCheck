@@ -42,9 +42,9 @@
     "semantic_hash": ""
   },
   "src/app/layout.tsx": {
-    "mtime": 1792045671.764159,
-    "seen": 1792101063.8416386,
-    "ast_hash": "5fa494424f69ec6580c1803ad56e81fe",
+    "mtime": 1792102775.8085084,
+    "seen": 1792539115.5992389,
+    "ast_hash": "7f4ae39712ac8f517cee073a120d5a78",
     "semantic_hash": ""
   },
   "src/app/login/page.tsx": {
@@ -60,9 +60,9 @@
     "semantic_hash": ""
   },
   "src/app/page.tsx": {
-    "mtime": 1792086151.333616,
-    "seen": 1792101063.8416386,
-    "ast_hash": "7c948bdf2f62c2fdc787729bdf182344",
+    "mtime": 1792102762.676122,
+    "seen": 1792539115.6012478,
+    "ast_hash": "5a834b5f543adc48fc688fafb336732b",
     "semantic_hash": ""
   },
   "src/app/setup/page.tsx": {
@@ -78,9 +78,9 @@
     "semantic_hash": ""
   },
   "src/app/vault/page.tsx": {
-    "mtime": 1792086260.5633433,
-    "seen": 1792101063.8416386,
-    "ast_hash": "5696aff9c61fb17e87d8db44d3804904",
+    "mtime": 1792102780.8767595,
+    "seen": 1792539115.6012478,
+    "ast_hash": "539e8b6030e2a4f3821498c78204109f",
     "semantic_hash": ""
   },
   "src/components/AuthGate.tsx": {
@@ -90,9 +90,9 @@
     "semantic_hash": ""
   },
   "src/components/BottomNavBar.tsx": {
-    "mtime": 1792040799.9010146,
-    "seen": 1792101063.8416386,
-    "ast_hash": "01c1aedc78ee2d8c8ba716c686e12e84",
+    "mtime": 1792102839.0885322,
+    "seen": 1792539115.6012478,
+    "ast_hash": "93d0e26b4153ec4982f0161cc8919cdf",
     "semantic_hash": ""
   },
   "src/components/DailyRhythm.tsx": {
@@ -162,9 +162,9 @@
     "semantic_hash": ""
   },
   "src/hooks/useCloudSync.ts": {
-    "mtime": 1792087168.1905136,
-    "seen": 1792101063.8416386,
-    "ast_hash": "49b8792a2849610d7b9a42303010f45f",
+    "mtime": 1792102638.0123234,
+    "seen": 1792539115.6037743,
+    "ast_hash": "115a37f55492651936c3d5e7c1204e8f",
     "semantic_hash": ""
   },
   "src/lib/auth.ts": {
@@ -180,9 +180,9 @@
     "semantic_hash": ""
   },
   "src/lib/db.ts": {
-    "mtime": 1792086260.364457,
-    "seen": 1792101063.8416386,
-    "ast_hash": "720b32853512c9bb36a025589cf62e7c",
+    "mtime": 1792539495.4693878,
+    "seen": 1792539617.6626074,
+    "ast_hash": "e3c462147f1ae23d9fff6ed6dad7804c",
     "semantic_hash": ""
   },
   "src/lib/sound.ts": {
@@ -192,21 +192,21 @@
     "semantic_hash": ""
   },
   "src/lib/storage.ts": {
-    "mtime": 1792085240.1424758,
-    "seen": 1792101063.8416386,
-    "ast_hash": "5488b940d7a35ad906bbdf33ec11956c",
+    "mtime": 1792102659.932191,
+    "seen": 1792539115.6058125,
+    "ast_hash": "ebac961203c27c83497cb091bd17d6c4",
     "semantic_hash": ""
   },
   "src/lib/supabase.ts": {
-    "mtime": 1792086260.4133432,
-    "seen": 1792101063.8416386,
-    "ast_hash": "9e3349544f5b2994e9039f09e521ce67",
+    "mtime": 1792104425.8951018,
+    "seen": 1792539115.6058125,
+    "ast_hash": "62e89760bf3b0cca7d8cc8f4196335b1",
     "semantic_hash": ""
   },
   "src/types/index.ts": {
-    "mtime": 1792086260.2472787,
-    "seen": 1792101063.8416386,
-    "ast_hash": "e8197165278625b769f591fe73ab6619",
+    "mtime": 1792102405.9493308,
+    "seen": 1792539115.6058125,
+    "ast_hash": "170a23cb4eaa608f4b9524d0ee267166",
     "semantic_hash": ""
   },
   "tsconfig.json": {
@@ -273,6 +273,54 @@
     "mtime": 1792038286.335109,
     "seen": 1792101063.8416386,
     "ast_hash": "a2760511c65806022ad20adf74370ff3",
+    "semantic_hash": ""
+  },
+  "public/sw.js": {
+    "mtime": 1792539604.0847218,
+    "seen": 1792539617.651631,
+    "ast_hash": "74bfccb29c864920157c5578071ab59d",
+    "semantic_hash": ""
+  },
+  "src/app/tasks/page.tsx": {
+    "mtime": 1792539577.5170896,
+    "seen": 1792539617.6568654,
+    "ast_hash": "fe10808db67887e2be74d9486ee9af7a",
+    "semantic_hash": ""
+  },
+  "src/components/NotificationPermissionBanner.tsx": {
+    "mtime": 1792102705.1527488,
+    "seen": 1792539115.6031997,
+    "ast_hash": "a4ee50bd59a96cedfe8c7c63f185e6e1",
+    "semantic_hash": ""
+  },
+  "src/components/NotificationScheduler.tsx": {
+    "mtime": 1792102765.6927352,
+    "seen": 1792539115.6031997,
+    "ast_hash": "be0ecadbee675d01b2d083d005385e0e",
+    "semantic_hash": ""
+  },
+  "src/components/PushupEngine.tsx": {
+    "mtime": 1792102965.5598347,
+    "seen": 1792539115.6037743,
+    "ast_hash": "11eb648cd9eac57b75ad50fb5f8e9824",
+    "semantic_hash": ""
+  },
+  "src/hooks/useNotificationScheduler.ts": {
+    "mtime": 1792102716.4418678,
+    "seen": 1792539115.6037743,
+    "ast_hash": "681842a55328537be0cb017f5eb836a2",
+    "semantic_hash": ""
+  },
+  "src/hooks/useNotifications.ts": {
+    "mtime": 1792102668.6942437,
+    "seen": 1792539115.6037743,
+    "ast_hash": "8093710409fef7ea9edd3f843caadb5e",
+    "semantic_hash": ""
+  },
+  "src/app/error.tsx": {
+    "mtime": 1792539595.5749059,
+    "seen": 1792539617.6548574,
+    "ast_hash": "976229d4777023c9f338a220f5802c25",
     "semantic_hash": ""
   }
 }
