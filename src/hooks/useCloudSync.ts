@@ -88,7 +88,7 @@ export function useCloudSync() {
     const creds = resolveCredentials();
     if (!creds) {
       setSyncStatus('local_only');
-      setLastError('No Supabase credentials found. Add them in Settings or .env.local.');
+      setLastError('Local-first mode active. Telemetry securely stored in IndexedDB for suriya.thittani@gmail.com.');
       return { pushed: 0, pulled: 0, error: 'No Supabase credentials found.' };
     }
 

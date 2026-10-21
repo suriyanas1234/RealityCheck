@@ -226,8 +226,8 @@ export const DEFAULT_CONTACTS: RelationshipContact[] = [
 ];
 
 export const DEFAULT_USER_PROFILE: UserProfile = {
-  name: '',
-  email: '',
+  name: 'Suriya',
+  email: 'suriya.thittani@gmail.com',
   focusAreas: [],
   isOfflineOnly: false,
   partnerName: 'Partner',
@@ -257,8 +257,8 @@ export const DEFAULT_USER_PROFILE: UserProfile = {
     'Evening Sink Zero',
   ],
   createdAt: new Date().toISOString(),
-  onboarded: false,
-  onboardingCompleted: false,
+  onboarded: true,
+  onboardingCompleted: true,
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -287,109 +287,50 @@ export class StorageService {
     return typeof window !== 'undefined';
   }
 
-  // Initial seed with 30-day realistic historical data if first load
+  // Initialize clean settings and empty historical ledgers
   public static init(): void {
     if (!this.isBrowser()) return;
     const initialized = localStorage.getItem(STORAGE_KEYS.INITIALIZED);
     if (!initialized) {
       this.saveSettings(DEFAULT_SETTINGS);
       this.saveChores(DEFAULT_CHORES);
-
-      // Generate realistic past 25 days of disciplined records for visual momentum
-      const pastAudits: NightlyAuditRecord[] = [];
-      const pastMeals: MealLog[] = [];
-      const pastGestures: ProactiveGestureLog[] = [];
-      const today = new Date();
-
-      for (let i = 28; i >= 1; i--) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        const dateStr = getTodayString(d);
-
-        // High compliance rate with occasional realistic miss
-        const mealPass = i !== 12 && i !== 22;
-        const chorePass = i !== 7;
-        const composurePass = i !== 15 && i !== 3;
-
-        pastAudits.push({
-          id: `audit-${dateStr}`,
-          date: dateStr,
-          adheredToMealSchedule: mealPass,
-          completedChoresUnprompted: chorePass,
-          maintainedComposure: composurePass,
-          objectiveObservation: !composurePass
-            ? 'Noticed frustration spike during deadline rush. Paused instead of reacting verbally.'
-            : undefined,
-          completedAt: new Date(d.setHours(22, 45, 0, 0)).toISOString(),
-        });
-
-        // Seed meals
-        pastMeals.push(
-          {
-            id: `meal-bf-${dateStr}`,
-            date: dateStr,
-            mealType: 'breakfast',
-            stapleId: 'bf-1',
-            loggedAt: new Date(d.setHours(8, 34, 0, 0)).toISOString(),
-          },
-          {
-            id: `meal-lu-${dateStr}`,
-            date: dateStr,
-            mealType: 'lunch',
-            stapleId: 'lu-1',
-            loggedAt: new Date(d.setHours(13, 10, 0, 0)).toISOString(),
-          },
-          {
-            id: `meal-di-${dateStr}`,
-            date: dateStr,
-            mealType: 'dinner',
-            stapleId: 'di-3',
-            loggedAt: new Date(d.setHours(18, 42, 0, 0)).toISOString(),
-          }
-        );
-      }
-
-      // Seed unprompted gestures
-      pastGestures.push(
-        {
-          id: 'gesture-seed-1',
-          recipientId: 'contact-gf',
-          recipientName: 'Girlfriend',
-          date: getTodayString(new Date(Date.now() - 4 * 86400000)),
-          timestamp: new Date(Date.now() - 4 * 86400000).toISOString(),
-          gestureType: 'Flowers / Favorite Treat',
-          details: 'Brought home her favorite lilies and matcha without being prompted.',
-          wasPrompted: false,
-        },
-        {
-          id: 'gesture-seed-2',
-          recipientId: 'contact-gf',
-          recipientName: 'Girlfriend',
-          date: getTodayString(new Date(Date.now() - 11 * 86400000)),
-          timestamp: new Date(Date.now() - 11 * 86400000).toISOString(),
-          gestureType: 'Planned Friday Date Night',
-          details: 'Booked dinner table and pottery workshop in advance on Monday morning.',
-          wasPrompted: false,
-        },
-        {
-          id: 'gesture-seed-3',
-          recipientId: 'contact-mom',
-          recipientName: 'Mother',
-          date: getTodayString(new Date(Date.now() - 2 * 86400000)),
-          timestamp: new Date(Date.now() - 2 * 86400000).toISOString(),
-          gestureType: 'Unprompted Call',
-          details: 'Called during evening walk just to ask how her garden is doing.',
-          wasPrompted: false,
-        }
-      );
-
-      this.saveAudits(pastAudits);
-      this.saveMeals(pastMeals);
-      this.saveGestures(pastGestures);
+      this.saveUserProfile(DEFAULT_USER_PROFILE);
+      this.saveAudits([]);
+      this.saveMeals([]);
+      this.saveGestures([]);
       localStorage.setItem(STORAGE_KEYS.INITIALIZED, 'true');
+      localStorage.setItem(STORAGE_KEYS.ONBOARDED, 'true');
     }
 
-    // Ensure the Dexie user_profile mirror exists for cloud sync
+    // Purge any legacy mock seed records from previous iterations
+    try {
+      const meals = this.getMeals();
+      const cleanMeals = meals.filter(
+        (m) =>
+          !m.id.startsWith('meal-bf-202') &&
+          !m.id.startsWith('meal-lu-202') &&
+          !m.id.startsWith('meal-di-202')
+      );
+      if (cleanMeals.length !== meals.length) {
+        this.saveMeals(cleanMeals);
+      }
+
+      const audits = this.getAudits();
+      const cleanAudits = audits.filter((a) => !a.id.startsWith('audit-202'));
+      if (cleanAudits.length !== audits.length) {
+        this.saveAudits(cleanAudits);
+      }
+
+      const gestures = this.getGestures();
+      const cleanGestures = gestures.filter((g) => !g.id.startsWith('gesture-seed'));
+      if (cleanGestures.length !== gestures.length) {
+        this.saveGestures(cleanGestures);
+      }
+    } catch {
+      // ignore
+    }
+
+      // Ensure the Dexie user_profile mirror exists for cloud sync
     void upsertLocalUserProfile(
       this.getUserProfile() as unknown as Record<string, unknown>
     );
@@ -728,6 +669,15 @@ export class StorageService {
     } catch {
       return false;
     }
+  }
+
+  public static clearAllHistoricalData(): void {
+    if (!this.isBrowser()) return;
+    this.saveMeals([]);
+    this.saveAudits([]);
+    this.saveGestures([]);
+    const chores = this.getChores().map((c) => ({ ...c, completedDates: {} }));
+    this.saveChores(chores);
   }
 
   public static resetToFactory(): void {

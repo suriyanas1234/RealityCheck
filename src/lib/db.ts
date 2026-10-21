@@ -476,14 +476,13 @@ export async function seedDatabaseIfEmpty() {
       });
     }
 
-    // Insert Cadences
+    // Insert Cadences (fresh unprompted baselines)
     await db.cadences.bulkPut([
       {
         id: 'cadence-date-night',
         title: 'Plan Complete Date (Activity + Food + Logistics)',
         recipient: 'Partner',
         cadenceDays: 14,
-        lastCompletedDate: getTodayString(new Date(Date.now() - 5 * 86400000)),
         instructions:
           'Bi-weekly prompt: Book complete date without asking partner to make decisions or research venues.',
       },
@@ -492,7 +491,6 @@ export async function seedDatabaseIfEmpty() {
         title: 'Unprompted Flower / Care Gesture',
         recipient: 'Partner',
         cadenceDays: 14,
-        lastCompletedDate: getTodayString(new Date(Date.now() - 6 * 86400000)),
         instructions:
           'Bi-weekly prompt: Deliver favorite flowers or surprise treat when no conflict or request occurred.',
       },
@@ -501,13 +499,37 @@ export async function seedDatabaseIfEmpty() {
         title: 'Unprompted Check-in Call',
         recipient: 'Mother',
         cadenceDays: 3,
-        lastCompletedDate: getTodayString(new Date(Date.now() - 2 * 86400000)),
         instructions:
           'Reach out unprompted before she needs to send a check-in reminder.',
       },
     ]);
 
+    // Purge any legacy mock records from previous runs
+    await db.meals.filter((m) => m.id.startsWith('meal-bf-202') || m.id.startsWith('meal-lu-202') || m.id.startsWith('meal-di-202')).delete();
+    await db.audits.filter((a) => a.id.startsWith('audit-202')).delete();
+    await db.gestures.filter((g) => g.id.startsWith('gesture-seed')).delete();
+
     // No demo history is seeded. All meals, audits, and gestures are
     // entered by the user and persisted in IndexedDB from that point on.
   });
+}
+
+
+// Clear all historical data from Dexie IndexedDB
+export async function clearAllHistoricalDataFromDatabase(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  await db.transaction(
+    'rw',
+    [db.meals, db.gestures, db.audits, db.pushup_logs, db.gym_sessions, db.chores],
+    async () => {
+      await db.meals.clear();
+      await db.gestures.clear();
+      await db.audits.clear();
+      await db.pushup_logs.clear();
+      await db.gym_sessions.clear();
+      await db.chores.toCollection().modify((chore) => {
+        chore.completedDates = {};
+      });
+    }
+  );
 }

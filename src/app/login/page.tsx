@@ -4,11 +4,11 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { playSound } from '@/lib/sound';
-import { LogIn, AlertCircle } from 'lucide-react';
+import { LogIn, UserCheck, ShieldCheck } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { user, loading, configured, signInWithGoogle } = useAuth();
+  const { user, loading, signInWithGoogle } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -42,22 +42,22 @@ export default function LoginPage() {
 
         <div className="notion-panel p-5 space-y-4">
           <div>
-            <h2 className="text-sm font-semibold text-[#E3E3E3]">Sign in</h2>
+            <h2 className="text-sm font-semibold text-[#E3E3E3]">Operator Access</h2>
             <p className="text-[11px] text-[#838383] mt-1">
-              Sign in to sync your execution telemetry across devices. You can also
-              continue without an account — your data stays on this device.
+              Sign in with your Google account to automatically secure and synchronize your execution telemetry.
             </p>
           </div>
 
-          {!configured && (
-            <div className="p-2.5 rounded bg-[#291f15] border border-[#523215] text-[11px] text-[#D9730D] flex items-start gap-2">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <span>
-                Supabase is not configured. Add your project URL and anon key in
-                Settings to enable Google sign-in.
-              </span>
+          <div className="p-3 rounded bg-[#202020] border border-[#373737] text-left text-xs space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#E3E3E3]">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#337EA9]" />
+              <span>Configured Operator Account</span>
             </div>
-          )}
+            <p className="font-mono text-[11px] text-[#337EA9]">suriya.thittani@gmail.com</p>
+            <p className="text-[10px] text-[#838383]">
+              Cloud saves &amp; cross-device sync are automatically bound to your Google account. No manual database setup required.
+            </p>
+          </div>
 
           {error && (
             <div className="p-2.5 rounded bg-[#2b1f13] border border-[#6b4119] text-[11px] text-[#D9730D]">
@@ -67,15 +67,11 @@ export default function LoginPage() {
 
           <button
             onClick={handleGoogle}
-            disabled={!configured || submitting}
-            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded border text-xs font-medium transition-colors ${
-              configured && !submitting
-                ? 'bg-[#202020] hover:bg-[#282828] border-[#373737] text-[#E3E3E3]'
-                : 'bg-[#202020] border-[#373737] text-[#838383] cursor-not-allowed'
-            }`}
+            disabled={submitting}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded bg-[#337EA9] hover:bg-[#286a91] text-white text-xs font-medium transition-colors"
           >
-            <LogIn className="w-3.5 h-3.5" />
-            <span>{submitting ? 'Redirecting…' : 'Continue with Google'}</span>
+            <LogIn className="w-4 h-4" />
+            <span>{submitting ? 'Authenticating…' : 'Continue with Google'}</span>
           </button>
 
           <button
@@ -83,9 +79,10 @@ export default function LoginPage() {
               playSound('click', true);
               router.replace('/');
             }}
-            className="w-full text-[11px] text-[#838383] hover:text-[#CCCCCC] underline"
+            className="w-full text-[11px] text-[#838383] hover:text-[#CCCCCC] underline flex items-center justify-center gap-1"
           >
-            Continue without an account
+            <UserCheck className="w-3 h-3" />
+            <span>Continue as Suriya (Offline / Local)</span>
           </button>
         </div>
       </div>

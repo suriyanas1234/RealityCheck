@@ -46,9 +46,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   // Step 1
-  const [name, setName] = useState('');
+  const [name, setName] = useState('Suriya');
   const [focusAreas, setFocusAreas] = useState<string[]>([]);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('suriya.thittani@gmail.com');
   const [password, setPassword] = useState('');
   const [isOfflineOnly, setIsOfflineOnly] = useState(false);
 
@@ -280,7 +280,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     <Cloud className="w-3.5 h-3.5 text-[#337EA9]" />
                   )}
                   <span className="text-[11px] font-semibold text-white">
-                    {isOfflineOnly ? 'Local-Only (Offline Mode)' : 'Cloud Sync (Supabase)'}
+                    {isOfflineOnly ? 'Local-Only (Offline Mode)' : 'Cloud Sync (Google Account)'}
                   </span>
                 </div>
                 <button
@@ -318,7 +318,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                     className={inputClass}
                   />
                   <p className="text-[10px] text-[#838383]">
-                    Credentials are used for Supabase auth. You can also sign in with Google later.
+                    Bound to your Google account (suriya.thittani@gmail.com).
                   </p>
                 </div>
               )}

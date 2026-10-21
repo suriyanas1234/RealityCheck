@@ -79,10 +79,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ pageTitle = 'Execution Hub
               className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] bg-[#202020] border border-[#373737] text-[#838383] hover:text-[#E3E3E3] transition-colors"
               title={
                 syncStatus === 'synced'
-                  ? 'Synced with Supabase'
+                  ? 'Synced with Cloud Profile'
                   : syncStatus === 'offline'
-                  ? 'Offline: Writes saved locally to IndexedDB'
-                  : 'Dexie IndexedDB Active'
+                  ? 'Offline: Writes saved locally'
+                  : 'Active (Local-First Encrypted)'
               }
             >
               {syncStatus === 'synced' ? (

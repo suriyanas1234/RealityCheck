@@ -4,8 +4,7 @@ import React, { useState } from 'react';
 import { AppSettings, MealType, StapleMeal } from '@/types';
 import { playSound } from '@/lib/sound';
 import { StorageService } from '@/lib/storage';
-import { SUPABASE_SQL_SCHEMA, testSupabaseConnection } from '@/lib/supabase';
-import { getUnsyncedRecords } from '@/lib/db';
+import { getUnsyncedRecords, clearAllHistoricalDataFromDatabase } from '@/lib/db';
 import {
   Settings,
   X,
@@ -37,11 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   onDataImported,
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'staples' | 'schedule' | 'supabase' | 'data'>('general');
-  const [copiedSql, setCopiedSql] = useState(false);
-  const [supabaseUrl, setSupabaseUrl] = useState(settings.supabaseConfig?.url || '');
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState(settings.supabaseConfig?.anonKey || '');
-  const [supabaseEnabled, setSupabaseEnabled] = useState(settings.supabaseConfig?.enabled || false);
+  const [activeTab, setActiveTab] = useState<'general' | 'staples' | 'schedule' | 'account' | 'data'>('general');
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -50,13 +45,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [editableStaples, setEditableStaples] = useState<Record<MealType, StapleMeal[]>>(settings.staples);
 
   if (!isOpen) return null;
-
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
-    setCopiedSql(true);
-    playSound('execute', soundEnabled);
-    setTimeout(() => setCopiedSql(false), 2000);
-  };
 
   const handleExportData = () => {
     playSound('execute', soundEnabled);
@@ -99,34 +87,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       StorageService.resetToFactory();
       onDataImported();
       onClose();
-    }
-  };
-
-  const handleSaveSupabase = () => {
-    const updated = {
-      ...settings,
-      supabaseConfig: {
-        enabled: supabaseEnabled,
-        url: supabaseUrl.trim(),
-        anonKey: supabaseAnonKey.trim(),
-      },
-    };
-    onUpdateSettings(updated);
-    playSound('execute', soundEnabled);
-    setSaveStatus('Supabase settings saved!');
-    setTimeout(() => setSaveStatus(null), 2500);
-  };
-
-  const handleTestConnection = async () => {
-    playSound('click', soundEnabled);
-    setSyncStatus('Testing connection...');
-    const result = await testSupabaseConnection(supabaseUrl, supabaseAnonKey);
-    if (result.success) {
-      playSound('execute', soundEnabled);
-      setSyncStatus(result.message);
-    } else {
-      playSound('error', soundEnabled);
-      setSyncStatus(`Error: ${result.message}`);
     }
   };
 
@@ -199,7 +159,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {[
             { id: 'general', label: 'General' },
             { id: 'staples', label: 'Staple Meals' },
-            { id: 'supabase', label: 'Supabase Cloud' },
+            { id: 'account', label: 'Account & Sync' },
             { id: 'data', label: 'Export / Backup' },
           ].map((tab) => (
             <button
@@ -344,102 +304,66 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* SUPABASE TAB */}
-          {activeTab === 'supabase' && (
+                    {/* ACCOUNT & SYNC TAB */}
+          {activeTab === 'account' && (
             <div className="space-y-4">
-              <div className="p-3 rounded-lg border border-zinc-800 bg-zinc-900/40 space-y-2">
-                <div className="flex items-center justify-between">
+              <div className="p-3.5 rounded-lg border border-zinc-800 bg-zinc-900/40 space-y-3">
+                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
                   <div>
-                    <span className="font-semibold text-zinc-200 block">Optional Supabase Sync</span>
-                    <span className="text-[11px] text-zinc-500">
-                      Sync discipline data securely across desktop and mobile devices
+                    <span className="font-semibold text-zinc-200 block text-xs">
+                      Operator Identity
+                    </span>
+                    <span className="text-[11px] text-zinc-500 font-mono">
+                      suriya.thittani@gmail.com
                     </span>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={supabaseEnabled}
-                    onChange={(e) => setSupabaseEnabled(e.target.checked)}
-                    className="w-4 h-4 accent-emerald-500 cursor-pointer"
-                  />
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">
+                    GOOGLE ACCOUNT ACTIVE
+                  </span>
                 </div>
 
-                <div className="space-y-2 pt-2">
-                  <div>
-                    <label className="block text-[10px] text-zinc-500 uppercase font-semibold mb-1">
-                      Supabase Project URL
-                    </label>
-                    <input
-                      type="text"
-                      value={supabaseUrl}
-                      onChange={(e) => setSupabaseUrl(e.target.value)}
-                      placeholder="https://xyzcompany.supabase.co"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-200"
-                    />
-                  </div>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  Your execution telemetry, habit adherence, and meal logs are linked to this Google account.
+                  No technical database connection strings or public keys are required.
+                </p>
 
-                  <div>
-                    <label className="block text-[10px] text-zinc-500 uppercase font-semibold mb-1">
-                      Anon Public Key
-                    </label>
-                    <input
-                      type="password"
-                      value={supabaseAnonKey}
-                      onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-200"
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={handleSaveSupabase}
-                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded border border-zinc-700 font-semibold"
-                    >
-                      Save Supabase Credentials
-                    </button>
-                    <button
-                      onClick={handleTestConnection}
-                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded border border-zinc-700 font-semibold"
-                    >
-                      Test Connection
-                    </button>
-                    <button
-                      onClick={handleSyncNow}
-                      disabled={isSyncing}
-                      className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white rounded border border-emerald-600 font-semibold"
-                    >
-                      {isSyncing ? 'Syncing...' : 'Sync Now'}
-                    </button>
-                  </div>
-
-                  {syncStatus && (
-                    <div className="mt-2 p-2 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-300">
-                      {syncStatus}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* SQL Schema Copy Button */}
-              <div className="p-3 rounded-lg border border-zinc-800 bg-zinc-950 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-zinc-300">Supabase SQL Schema</span>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   <button
-                    onClick={handleCopySql}
-                    className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded border border-zinc-700 flex items-center gap-1"
+                    onClick={handleSyncNow}
+                    disabled={isSyncing}
+                    className="px-3.5 py-1.5 bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white rounded font-semibold text-xs transition-colors flex items-center gap-1.5"
                   >
-                    {copiedSql ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedSql ? 'Copied SQL' : 'Copy SQL Script'}</span>
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Syncing...' : 'Sync Telemetry Now'}</span>
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      if (confirm('Wipe all historical meal logs, audits, and gestures? Baseline prerequisites will remain untouched.')) {
+                        StorageService.clearAllHistoricalData();
+                        await clearAllHistoricalDataFromDatabase();
+                        playSound('execute', soundEnabled);
+                        onDataImported();
+                        setSyncStatus('Historical data ledger cleared to 0.');
+                        setTimeout(() => setSyncStatus(null), 3000);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-amber-500 rounded border border-zinc-800 font-semibold text-xs transition-colors"
+                  >
+                    Clear Historical Ledger (Reset to 0)
                   </button>
                 </div>
-                <p className="text-[11px] text-zinc-500">
-                  Run this in your Supabase SQL Editor to create tables for meals, chores, gestures, and nightly audits.
-                </p>
+
+                {syncStatus && (
+                  <div className="mt-2 p-2 rounded bg-zinc-950 border border-zinc-800 text-[11px] text-zinc-300">
+                    {syncStatus}
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* DATA TAB */}
+{/* DATA TAB */}
           {activeTab === 'data' && (
             <div className="space-y-4">
               <div className="p-3 rounded-lg border border-zinc-800 bg-zinc-900/50 space-y-2">

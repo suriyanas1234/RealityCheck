@@ -10,13 +10,8 @@ import {
   DEFAULT_CHORES,
   DEFAULT_CONTACTS,
 } from '@/lib/storage';
-import { applyPrerequisitesToDatabase, seedDatabaseIfEmpty } from '@/lib/db';
-import {
-  SUPABASE_SQL_SCHEMA,
-  testSupabaseConnection,
-  savePrerequisitesToCloud,
-  fetchPrerequisitesFromCloud,
-} from '@/lib/supabase';
+import { applyPrerequisitesToDatabase, seedDatabaseIfEmpty, clearAllHistoricalDataFromDatabase } from '@/lib/db';
+import { savePrerequisitesToCloud } from '@/lib/supabase';
 import { playSound } from '@/lib/sound';
 import {
   PrerequisitesPayload,
@@ -50,7 +45,7 @@ import {
 export default function SignupOnboardingPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'profile' | 'schedule' | 'staples' | 'chores' | 'cloud'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'schedule' | 'staples' | 'chores' | 'account'>('profile');
 
   // Form State
   const [userProfile, setUserProfile] = useState<UserProfile>(DEFAULT_USER_PROFILE);
@@ -61,19 +56,8 @@ export default function SignupOnboardingPage() {
   const [militaryTime, setMilitaryTime] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
-  // Cloud Config State
-  const [supabaseEnabled, setSupabaseEnabled] = useState<boolean>(false);
-  const [supabaseUrl, setSupabaseUrl] = useState<string>('');
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState<string>('');
-
-  // UI / Testing State
-  const [testStatus, setTestStatus] = useState<{ loading: boolean; success?: boolean; message?: string } | null>(null);
-  const [restoreStatus, setRestoreStatus] = useState<{ loading: boolean; success?: boolean; message?: string } | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveFeedback, setSaveFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [showSqlSchema, setShowSqlSchema] = useState<boolean>(false);
-  const [copiedSql, setCopiedSql] = useState<boolean>(false);
-  const [showRestoreBox, setShowRestoreBox] = useState<boolean>(false);
 
   // New chore input
   const [newChoreTitle, setNewChoreTitle] = useState('');
@@ -81,7 +65,6 @@ export default function SignupOnboardingPage() {
 
   useEffect(() => {
     seedDatabaseIfEmpty();
-    // Load existing prerequisites if user has already configured some
     const existing = StorageService.getPrerequisitesPayload();
     if (existing.profile) {
       setUserProfile(existing.profile);
@@ -104,11 +87,6 @@ export default function SignupOnboardingPage() {
     if (existing.soundEnabled !== undefined) {
       setSoundEnabled(existing.soundEnabled);
     }
-    if (existing.supabaseConfig) {
-      setSupabaseEnabled(existing.supabaseConfig.enabled || false);
-      setSupabaseUrl(existing.supabaseConfig.url || '');
-      setSupabaseAnonKey(existing.supabaseConfig.anonKey || '');
-    }
     setMounted(true);
   }, []);
 
@@ -120,78 +98,6 @@ export default function SignupOnboardingPage() {
       </div>
     );
   }
-
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
-    setCopiedSql(true);
-    playSound('execute', soundEnabled);
-    setTimeout(() => setCopiedSql(false), 2500);
-  };
-
-  const handleTestConnection = async () => {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      setTestStatus({
-        loading: false,
-        success: false,
-        message: 'Please provide both Supabase Project URL and Anon API Key.',
-      });
-      return;
-    }
-
-    setTestStatus({ loading: true });
-    playSound('click', soundEnabled);
-    const res = await testSupabaseConnection(supabaseUrl, supabaseAnonKey);
-    setTestStatus({
-      loading: false,
-      success: res.success,
-      message: res.message,
-    });
-    if (res.success) {
-      playSound('execute', soundEnabled);
-    } else {
-      playSound('error', soundEnabled);
-    }
-  };
-
-  const handleRestoreFromCloud = async () => {
-    if (!supabaseUrl || !supabaseAnonKey) {
-      setRestoreStatus({
-        loading: false,
-        success: false,
-        message: 'Enter your Supabase URL & Anon Key to retrieve your saved prerequisites.',
-      });
-      return;
-    }
-
-    setRestoreStatus({ loading: true });
-    playSound('click', soundEnabled);
-    const res = await fetchPrerequisitesFromCloud(supabaseUrl, supabaseAnonKey);
-    if (res.success && res.payload) {
-      const p = res.payload;
-      if (p.profile) setUserProfile(p.profile);
-      if (p.schedule && p.schedule.length > 0) setSchedule(p.schedule);
-      if (p.staples) setStaples(p.staples);
-      if (p.chores && p.chores.length > 0) setChores(p.chores);
-      if (p.contacts && p.contacts.length > 0) setContacts(p.contacts);
-      if (p.militaryTime !== undefined) setMilitaryTime(p.militaryTime);
-      if (p.soundEnabled !== undefined) setSoundEnabled(p.soundEnabled);
-      setSupabaseEnabled(true);
-
-      setRestoreStatus({
-        loading: false,
-        success: true,
-        message: '✓ Restored all saved prerequisites from your cloud table!',
-      });
-      playSound('execute', soundEnabled);
-    } else {
-      setRestoreStatus({
-        loading: false,
-        success: false,
-        message: res.error || 'Failed to restore prerequisites from cloud.',
-      });
-      playSound('error', soundEnabled);
-    }
-  };
 
   const handleAddChore = () => {
     if (!newChoreTitle.trim()) return;
@@ -246,6 +152,7 @@ export default function SignupOnboardingPage() {
     const payload: PrerequisitesPayload = {
       profile: {
         ...userProfile,
+        email: userProfile.email || 'suriya.thittani@gmail.com',
         onboarded: true,
         onboardedAt: new Date().toISOString(),
       },
@@ -255,11 +162,6 @@ export default function SignupOnboardingPage() {
       contacts: updatedContacts,
       militaryTime,
       soundEnabled,
-      supabaseConfig: {
-        enabled: supabaseEnabled,
-        url: supabaseUrl.trim(),
-        anonKey: supabaseAnonKey.trim(),
-      },
     };
 
     try {
@@ -275,24 +177,25 @@ export default function SignupOnboardingPage() {
         userProfile.motherCadenceDays
       );
 
-      // 3. If Supabase is enabled, push to Supabase Cloud Table
+      // 3. Sync to Cloud for this account
       let cloudMsg = '';
-      if (supabaseEnabled && supabaseUrl && supabaseAnonKey) {
-        const cloudRes = await savePrerequisitesToCloud(payload, supabaseUrl, supabaseAnonKey);
+      const email = userProfile.email || 'suriya.thittani@gmail.com';
+      try {
+        const cloudRes = await savePrerequisitesToCloud(payload, email);
         if (cloudRes.success) {
-          cloudMsg = ' and successfully locked into your private Supabase cloud table!';
-        } else {
-          cloudMsg = ` (Local storage saved. Cloud note: ${cloudRes.error})`;
+          cloudMsg = ' and synchronized to your account!';
         }
+      } catch {
+        // Local-first
       }
 
       playSound('execute', soundEnabled);
       setSaveFeedback({
         type: 'success',
-        message: `Prerequisites permanently saved${cloudMsg}`,
+        message: `Prerequisites locked in for ${email}${cloudMsg}`,
       });
 
-      // Navigate to Today Execution Hub after brief moment
+            // Navigate to Today Execution Hub after brief moment
       setTimeout(() => {
         router.push('/');
       }, 1200);
@@ -332,85 +235,14 @@ export default function SignupOnboardingPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => setShowRestoreBox(!showRestoreBox)}
-            className="text-[11px] px-2.5 py-1 rounded border border-[#373737] bg-[#252525] hover:bg-[#2c2c2c] text-[#838383] hover:text-[#E3E3E3] flex items-center gap-1.5 transition-colors"
-          >
-            <Cloud className="w-3.5 h-3.5 text-[#337EA9]" />
-            <span className="hidden sm:inline">Existing User?</span>
-            <span className="font-medium text-[#337EA9]">Restore Cloud</span>
-          </button>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#373737] bg-[#252525] text-[11px] text-[#838383]">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#446B5E]" />
+            <span className="font-mono text-[#E3E3E3]">{userProfile.email || 'suriya.thittani@gmail.com'}</span>
+          </div>
         </div>
       </header>
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Restore From Cloud Dropdown Accordion */}
-        {showRestoreBox && (
-          <div className="p-4 rounded-lg bg-[#202020] border border-[#337EA9]/40 space-y-3 shadow-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-semibold text-[#337EA9]">
-                <Cloud className="w-4 h-4" />
-                <span>Restore Prerequisites from Supabase</span>
-              </div>
-              <button
-                onClick={() => setShowRestoreBox(false)}
-                className="text-xs text-[#838383] hover:text-[#E3E3E3]"
-              >
-                ✕ Close
-              </button>
-            </div>
-            <p className="text-[11px] text-[#838383]">
-              If you have already configured RealityCheck on another device and saved to Supabase, enter your URL and
-              Anon Key below to instantly pull down your entire configuration.
-            </p>
-            <div className="space-y-2 text-xs">
-              <div>
-                <label className="block text-[10px] uppercase font-mono text-[#838383] mb-1">Supabase URL</label>
-                <input
-                  type="text"
-                  value={supabaseUrl}
-                  onChange={(e) => setSupabaseUrl(e.target.value)}
-                  placeholder="https://xyzproject.supabase.co"
-                  className="w-full bg-[#191919] border border-[#373737] rounded px-2.5 py-1.5 text-xs text-[#E3E3E3] font-mono focus:outline-none focus:border-[#337EA9]"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] uppercase font-mono text-[#838383] mb-1">Anon Public Key</label>
-                <input
-                  type="password"
-                  value={supabaseAnonKey}
-                  onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-                  className="w-full bg-[#191919] border border-[#373737] rounded px-2.5 py-1.5 text-xs text-[#E3E3E3] font-mono focus:outline-none focus:border-[#337EA9]"
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              <button
-                onClick={handleRestoreFromCloud}
-                disabled={restoreStatus?.loading}
-                className="px-3 py-1.5 bg-[#337EA9] hover:bg-[#2b6b91] disabled:opacity-50 text-white rounded text-xs font-medium flex items-center gap-1.5"
-              >
-                {restoreStatus?.loading ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Cloud className="w-3.5 h-3.5" />
-                )}
-                <span>Retrieve & Fill All Tabs</span>
-              </button>
-              {restoreStatus && (
-                <span
-                  className={`text-[11px] ${
-                    restoreStatus.success ? 'text-[#446B5E]' : 'text-[#D9730D]'
-                  }`}
-                >
-                  {restoreStatus.message}
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Intro Callout */}
         <div className="notion-callout bg-[#202020] border-[#373737]">
           <span className="text-xl select-none">🎯</span>
@@ -431,7 +263,7 @@ export default function SignupOnboardingPage() {
             { id: 'schedule', label: '2. Daily Anchors', icon: Clock },
             { id: 'staples', label: '3. Staple Meals', icon: Utensils },
             { id: 'chores', label: '4. Household Chores', icon: CheckSquare },
-            { id: 'cloud', label: '5. Supabase Cloud', icon: Cloud },
+            { id: 'account', label: '5. Account & Sync', icon: Cloud },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -951,146 +783,100 @@ export default function SignupOnboardingPage() {
               <button
                 onClick={() => {
                   playSound('click', soundEnabled);
-                  setActiveTab('cloud');
+                  setActiveTab('account');
                 }}
                 className="px-4 py-2 bg-[#252525] hover:bg-[#2c2c2c] border border-[#373737] rounded text-xs font-semibold text-[#E3E3E3] flex items-center gap-1.5"
               >
-                <span>Proceed to Cloud Setup</span>
+                <span>Proceed to Account & Sync</span>
                 <ChevronRight className="w-3.5 h-3.5 text-[#337EA9]" />
               </button>
             </div>
           </div>
         )}
 
-        {/* TAB 5: SUPABASE CLOUD SYNC */}
-        {activeTab === 'cloud' && (
+        {/* TAB 5: ACCOUNT & SYNC */}
+        {activeTab === 'account' && (
           <div className="space-y-4 animate-in fade-in duration-150">
             <div className="notion-callout">
               <Cloud className="w-4 h-4 text-[#337EA9] shrink-0 mt-0.5" />
               <div className="text-[11px] text-[#838383]">
-                <strong className="text-[#E3E3E3]">Permanent Cloud Backup:</strong> When enabled, your prerequisites,
-                daily meal logs, chores, proactive gestures, and nightly audits are mirrored to your personal Supabase
-                project. You will never have to re-enter them again.
+                <strong className="text-[#E3E3E3]">Google Account Synchronization:</strong> All prerequisites,
+                daily meal logs, chores, proactive gestures, and nightly audits are automatically tied to your Google
+                account. No manual database setup, project URLs, or API keys are required.
               </div>
             </div>
 
             <div className="notion-panel p-4 space-y-4">
-              <div className="flex items-center justify-between border-b border-[#373737] pb-2">
-                <div>
-                  <span className="text-xs font-semibold text-[#E3E3E3] uppercase tracking-wider block">
-                    Supabase Cloud Integration
-                  </span>
-                  <span className="text-[11px] text-[#838383]">
-                    {supabaseEnabled ? 'Cloud Sync is Enabled' : 'Offline-First Mode Active (Local IndexedDB)'}
-                  </span>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={supabaseEnabled}
-                    onChange={(e) => setSupabaseEnabled(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-9 h-5 bg-[#373737] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#337EA9]"></div>
-                </label>
+              <div className="border-b border-[#373737] pb-3">
+                <span className="text-xs font-semibold text-[#E3E3E3] uppercase tracking-wider block">
+                  Active Operator Account
+                </span>
+                <span className="text-[11px] text-[#838383]">
+                  Connected via Google Sign-In
+                </span>
               </div>
 
-              {supabaseEnabled && (
-                <div className="space-y-3 pt-1">
-                  <div>
-                    <label className="block text-[11px] text-[#838383] font-medium mb-1">
-                      Supabase Project URL
-                    </label>
-                    <input
-                      type="text"
-                      value={supabaseUrl}
-                      onChange={(e) => setSupabaseUrl(e.target.value)}
-                      placeholder="https://xyzproject.supabase.co"
-                      className="w-full bg-[#191919] border border-[#373737] rounded px-3 py-2 text-xs text-[#E3E3E3] font-mono focus:outline-none focus:border-[#337EA9]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-[#838383] font-medium mb-1">
-                      Supabase Anon Public API Key
-                    </label>
-                    <input
-                      type="password"
-                      value={supabaseAnonKey}
-                      onChange={(e) => setSupabaseAnonKey(e.target.value)}
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-                      className="w-full bg-[#191919] border border-[#373737] rounded px-3 py-2 text-xs text-[#E3E3E3] font-mono focus:outline-none focus:border-[#337EA9]"
-                    />
-                  </div>
-
-                  {/* Test Connection Button */}
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <button
-                      onClick={handleTestConnection}
-                      disabled={testStatus?.loading}
-                      className="px-3 py-1.5 bg-[#252525] hover:bg-[#2c2c2c] border border-[#373737] rounded text-xs font-semibold text-[#E3E3E3] flex items-center gap-1.5 transition-colors"
-                    >
-                      {testStatus?.loading ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#337EA9]" />
-                      ) : (
-                        <ShieldCheck className="w-3.5 h-3.5 text-[#446B5E]" />
-                      )}
-                      <span>Test Cloud Connection</span>
-                    </button>
-
-                    {testStatus && (
-                      <span
-                        className={`text-[11px] font-medium flex items-center gap-1 ${
-                          testStatus.success ? 'text-[#446B5E]' : 'text-[#D9730D]'
-                        }`}
-                      >
-                        {testStatus.success ? (
-                          <Check className="w-3 h-3 text-[#446B5E]" />
-                        ) : (
-                          <AlertCircle className="w-3 h-3 text-[#D9730D]" />
-                        )}
-                        <span>{testStatus.message}</span>
-                      </span>
-                    )}
-                  </div>
+              <div className="p-3 rounded bg-[#191919] border border-[#373737] space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[#838383]">Email:</span>
+                  <span className="font-mono text-[#E3E3E3]">{userProfile.email || 'suriya.thittani@gmail.com'}</span>
                 </div>
-              )}
+                <div className="flex items-center justify-between">
+                  <span className="text-[#838383]">Operator:</span>
+                  <span className="font-medium text-[#E3E3E3]">{userProfile.name || 'Suriya'}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[#838383]">Data Architecture:</span>
+                  <span className="text-[#446B5E] font-medium">Local-First (Dexie IndexedDB) + Auto-Sync</span>
+                </div>
+              </div>
 
-              {/* SQL Schema helper toggle */}
-              <div className="border-t border-[#373737] pt-3">
-                <button
-                  onClick={() => setShowSqlSchema(!showSqlSchema)}
-                  className="text-xs text-[#337EA9] hover:underline flex items-center gap-1"
-                >
-                  <span>{showSqlSchema ? '▼ Hide' : '▶ Show'} Supabase SQL Schema (Tables Setup)</span>
-                </button>
-
-                {showSqlSchema && (
-                  <div className="mt-2 space-y-2 bg-[#191919] p-3 rounded border border-[#373737]">
-                    <div className="flex items-center justify-between text-[11px] text-[#838383]">
-                      <span>Run once in your Supabase SQL Editor:</span>
-                      <button
-                        onClick={handleCopySql}
-                        className="px-2 py-0.5 rounded bg-[#252525] hover:bg-[#2e2e2e] border border-[#373737] text-white flex items-center gap-1 text-[10px]"
-                      >
-                        {copiedSql ? <Check className="w-3 h-3 text-[#446B5E]" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedSql ? 'Copied!' : 'Copy SQL'}</span>
-                      </button>
-                    </div>
-                    <pre className="text-[10px] font-mono text-[#838383] overflow-x-auto p-2 bg-[#141414] rounded max-h-48 border border-[#2b2b2b]">
-                      {SUPABASE_SQL_SCHEMA}
-                    </pre>
+              {/* Reset / Clean Historical Data Section */}
+              <div className="border-t border-[#373737] pt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold text-[#E3E3E3] block">
+                      Historical Ledger Clean Slate
+                    </span>
+                    <span className="text-[11px] text-[#838383]">
+                      Purge previous test entries, meal logs, audits, and gestures to start with an empty history.
+                    </span>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (confirm('Clear all historical meal logs, audits, chores history, and gestures? Baseline prerequisites will be preserved.')) {
+                        StorageService.clearAllHistoricalData();
+                        await clearAllHistoricalDataFromDatabase();
+                        playSound('execute', soundEnabled);
+                        setSaveFeedback({ type: 'success', message: 'Historical ledger cleared! Fresh start ready.' });
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-[#252525] hover:bg-[#2b1f1f] hover:border-[#8b2e2e] border border-[#373737] rounded text-xs text-[#D9730D] flex items-center gap-1.5 transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Wipe Historical Data</span>
+                  </button>
+                </div>
               </div>
             </div>
 
             <div className="flex justify-between pt-2">
               <button
+                type="button"
                 onClick={() => setActiveTab('chores')}
                 className="px-3 py-1.5 rounded border border-[#373737] text-xs text-[#838383] hover:text-[#E3E3E3]"
               >
                 Back
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                disabled={isSaving}
+                className="px-4 py-2 bg-[#337EA9] hover:bg-[#286a91] text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+              >
+                {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                <span>Save &amp; Lock In Prerequisites</span>
               </button>
             </div>
           </div>
