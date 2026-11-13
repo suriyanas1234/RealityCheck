@@ -3,7 +3,8 @@
 import { useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
-import { getTodayString } from '@/lib/date-utils';
+import { getTodayString, parseMinutesFromTimeString } from '@/lib/date-utils';
+import { StorageService } from '@/lib/storage';
 import { useNotifications } from './useNotifications';
 
 // Track which notification keys we've already fired today (per session).
@@ -32,10 +33,42 @@ export function useNotificationScheduler() {
       const today = getTodayString(now);
       const hh = now.getHours();
       const mm = now.getMinutes();
+      const nowMin = hh * 60 + mm;
       const day = now.getDay(); // 0 = Sunday
 
-      // Morning Reset 08:00
-      if (hh === 8 && mm >= 0 && mm < 2 && !firedRef.has(`mr-${today}`)) {
+      const settings = StorageService.getSettings();
+      const profile = StorageService.getUserProfile();
+      const blocks = settings.scheduleBlocks || [];
+
+      const wakeTime =
+        blocks.find((b) => b.category === 'wake' || b.id === 'block-wake')?.time ||
+        profile.anchors?.morningReset ||
+        '08:00';
+      const bfTime =
+        blocks.find((b) => b.mealType === 'breakfast' || b.id === 'block-breakfast')?.time ||
+        profile.anchors?.breakfast ||
+        '08:30';
+      const lnTime =
+        blocks.find((b) => b.mealType === 'lunch' || b.id === 'block-lunch')?.time ||
+        profile.anchors?.lunch ||
+        '13:00';
+      const dnTime =
+        blocks.find((b) => b.mealType === 'dinner' || b.id === 'block-dinner')?.time ||
+        profile.anchors?.eveningReset ||
+        '18:30';
+      const dcTime =
+        blocks.find((b) => b.category === 'sleep' || b.id === 'block-winddown')?.time ||
+        profile.anchors?.dayClosure ||
+        '22:30';
+
+      const wakeMin = parseMinutesFromTimeString(wakeTime);
+      const bfAlertMin = Math.max(0, parseMinutesFromTimeString(bfTime) - 15);
+      const lnAlertMin = Math.max(0, parseMinutesFromTimeString(lnTime) - 15);
+      const dnAlertMin = Math.max(0, parseMinutesFromTimeString(dnTime) - 15);
+      const dcMin = parseMinutesFromTimeString(dcTime);
+
+      // Morning Reset
+      if (nowMin >= wakeMin && nowMin < wakeMin + 2 && !firedRef.has(`mr-${today}`)) {
         firedRef.add(`mr-${today}`);
         showNotification(
           'Grounding Routine Active',
@@ -43,18 +76,18 @@ export function useNotificationScheduler() {
         );
       }
 
-      // Meal windows (15 min prior): 08:15, 12:45, 18:15
-      if (hh === 8 && mm >= 15 && mm < 17 && !firedRef.has(`bf-${today}`)) {
+      // Meal windows (15 min prior to configured meal anchors)
+      if (nowMin >= bfAlertMin && nowMin < bfAlertMin + 2 && !firedRef.has(`bf-${today}`)) {
         firedRef.add(`bf-${today}`);
-        showNotification('Fuel Anchor Approaching', 'Lock in staple meal.');
+        showNotification('Fuel Anchor Approaching', 'Lock in staple breakfast.');
       }
-      if (hh === 12 && mm >= 45 && mm < 47 && !firedRef.has(`ln-${today}`)) {
+      if (nowMin >= lnAlertMin && nowMin < lnAlertMin + 2 && !firedRef.has(`ln-${today}`)) {
         firedRef.add(`ln-${today}`);
-        showNotification('Fuel Anchor Approaching', 'Lock in staple meal.');
+        showNotification('Fuel Anchor Approaching', 'Lock in staple lunch.');
       }
-      if (hh === 18 && mm >= 15 && mm < 17 && !firedRef.has(`dn-${today}`)) {
+      if (nowMin >= dnAlertMin && nowMin < dnAlertMin + 2 && !firedRef.has(`dn-${today}`)) {
         firedRef.add(`dn-${today}`);
-        showNotification('Fuel Anchor Approaching', 'Lock in staple meal.');
+        showNotification('Fuel Anchor Approaching', 'Lock in staple dinner.');
       }
 
       // Pushup Check-In 15:00
@@ -81,12 +114,15 @@ export function useNotificationScheduler() {
         );
         if (!loggedToday) {
           firedRef.add(`mom-${today}`);
-          showNotification('Initiative Engine', 'Text Mom about your day.');
+          showNotification(
+            'Initiative Engine',
+            `Text ${profile.motherName || 'Mom'} about your day.`
+          );
         }
       }
 
-      // Day Closure / Evening Reset 22:30
-      if (hh === 22 && mm >= 30 && mm < 32 && !firedRef.has(`dc-${today}`)) {
+      // Day Closure / Evening Reset
+      if (nowMin >= dcMin && nowMin < dcMin + 2 && !firedRef.has(`dc-${today}`)) {
         firedRef.add(`dc-${today}`);
         showNotification('Kitchen Reset & 2-Minute Audit', 'Day Closure time.');
       }

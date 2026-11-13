@@ -16,8 +16,21 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
-export const playSound = (type: 'click' | 'execute' | 'error' | 'bell', soundEnabled: boolean = true) => {
-  if (!soundEnabled) return;
+export function isSoundEnabledInSettings(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = localStorage.getItem('reality_check_settings_v1');
+    if (!raw) return true;
+    const parsed = JSON.parse(raw);
+    return parsed.soundEnabled !== undefined ? Boolean(parsed.soundEnabled) : true;
+  } catch {
+    return true;
+  }
+}
+
+export const playSound = (type: 'click' | 'execute' | 'error' | 'bell', soundEnabled?: boolean) => {
+  const enabled = soundEnabled !== undefined ? soundEnabled : isSoundEnabledInSettings();
+  if (!enabled) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 

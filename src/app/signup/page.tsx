@@ -12,6 +12,8 @@ import {
 } from '@/lib/storage';
 import { applyPrerequisitesToDatabase, seedDatabaseIfEmpty, clearAllHistoricalDataFromDatabase } from '@/lib/db';
 import { savePrerequisitesToCloud } from '@/lib/supabase';
+import { useCloudSync } from '@/hooks/useCloudSync';
+import { useAuth } from '@/hooks/useAuth';
 import { playSound } from '@/lib/sound';
 import {
   PrerequisitesPayload,
@@ -40,10 +42,13 @@ import {
   Trash2,
   Lock,
   ExternalLink,
+  LogOut,
 } from 'lucide-react';
 
 export default function SignupOnboardingPage() {
   const router = useRouter();
+  const { syncStatus, pendingCount, lastSyncedAt, lastError, triggerSync } = useCloudSync();
+  const { user, signOut } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<'profile' | 'schedule' | 'staples' | 'chores' | 'account'>('profile');
 
@@ -149,10 +154,22 @@ export default function SignupOnboardingPage() {
       },
     ];
 
+    const findAnchorTime = (id: string, fallback: string) =>
+      schedule.find((b) => b.id === id)?.time || fallback;
+
+    const syncedAnchors = {
+      morningWake: findAnchorTime('anchor-morning-wake', userProfile.anchors?.morningWake || '08:00'),
+      breakfast: findAnchorTime('anchor-breakfast', userProfile.anchors?.breakfast || '08:30'),
+      lunch: findAnchorTime('anchor-lunch', userProfile.anchors?.lunch || '13:00'),
+      dinner: findAnchorTime('anchor-dinner', userProfile.anchors?.dinner || '18:30'),
+      eveningAudit: findAnchorTime('anchor-audit', userProfile.anchors?.eveningAudit || '22:30'),
+    };
+
     const payload: PrerequisitesPayload = {
       profile: {
         ...userProfile,
-        email: userProfile.email || 'suriya.thittani@gmail.com',
+        email: userProfile.email || user?.email || 'suriya.thittani@gmail.com',
+        anchors: syncedAnchors,
         onboarded: true,
         onboardedAt: new Date().toISOString(),
       },
@@ -174,7 +191,10 @@ export default function SignupOnboardingPage() {
         userProfile.partnerName,
         userProfile.partnerCadenceDays,
         userProfile.motherName,
-        userProfile.motherCadenceDays
+        userProfile.motherCadenceDays,
+        userProfile.cadences?.gestureIntervalDays || userProfile.partnerCadenceDays,
+        userProfile.partnerReminderNotes,
+        userProfile.motherReminderNotes
       );
 
       // 3. Sync to Cloud for this account
@@ -625,6 +645,22 @@ export default function SignupOnboardingPage() {
                           placeholder="Staple name"
                         />
                         <div className="flex items-center gap-1 text-[11px] text-[#838383]">
+                          <span>Protein:</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="150"
+                            value={item.proteinGrams ?? 30}
+                            onChange={(e) => {
+                              const copy = { ...staples };
+                              copy[mealSlot][idx].proteinGrams = parseInt(e.target.value) || 0;
+                              setStaples(copy);
+                            }}
+                            className="w-12 bg-[#202020] border border-[#373737] rounded px-1.5 py-1 text-xs text-center text-[#E3E3E3]"
+                          />
+                          <span>g</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[11px] text-[#838383]">
                           <span>Prep:</span>
                           <input
                             type="number"
@@ -819,7 +855,7 @@ export default function SignupOnboardingPage() {
               <div className="p-3 rounded bg-[#191919] border border-[#373737] space-y-2 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-[#838383]">Email:</span>
-                  <span className="font-mono text-[#E3E3E3]">{userProfile.email || 'suriya.thittani@gmail.com'}</span>
+                  <span className="font-mono text-[#E3E3E3]">{userProfile.email || user?.email || 'suriya.thittani@gmail.com'}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-[#838383]">Operator:</span>
@@ -829,6 +865,52 @@ export default function SignupOnboardingPage() {
                   <span className="text-[#838383]">Data Architecture:</span>
                   <span className="text-[#446B5E] font-medium">Local-First (Dexie IndexedDB) + Auto-Sync</span>
                 </div>
+                <div className="flex items-center justify-between pt-1 border-t border-[#373737]">
+                  <span className="text-[#838383]">Cloud Sync Status:</span>
+                  <span className="font-mono text-[11px] text-[#E3E3E3]">
+                    {syncStatus === 'syncing'
+                      ? 'Syncing...'
+                      : syncStatus === 'synced'
+                      ? `Synced${lastSyncedAt ? ` (${new Date(lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}`
+                      : syncStatus === 'error'
+                      ? 'Local Only / Offline'
+                      : 'Local-First Ready'}{' '}
+                    {pendingCount > 0 ? `• ${pendingCount} pending` : ''}
+                  </span>
+                </div>
+                {lastError && (
+                  <div className="text-[11px] text-[#D9730D] pt-1">
+                    Note: {lastError}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound('click', soundEnabled);
+                    triggerSync();
+                  }}
+                  disabled={syncStatus === 'syncing'}
+                  className="px-3 py-1.5 bg-[#252525] hover:bg-[#2e2e2e] border border-[#373737] rounded text-xs text-[#E3E3E3] flex items-center gap-1.5 transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-[#337EA9] ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} />
+                  <span>{syncStatus === 'syncing' ? 'Syncing Telemetry...' : 'Force Cloud Sync Now'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    playSound('click', soundEnabled);
+                    await signOut();
+                    router.push('/login');
+                  }}
+                  className="px-3 py-1.5 bg-[#202020] hover:bg-[#2b1f1f] border border-[#373737] rounded text-xs text-[#838383] hover:text-[#D9730D] flex items-center gap-1.5 transition-colors"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out / Switch Operator</span>
+                </button>
               </div>
 
               {/* Reset / Clean Historical Data Section */}

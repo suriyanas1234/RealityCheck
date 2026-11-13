@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { StorageService } from '@/lib/storage';
+import { StorageService, DEFAULT_SCHEDULE_BLOCKS } from '@/lib/storage';
+import { applyPrerequisitesToDatabase } from '@/lib/db';
+import { formatTime24String } from '@/lib/date-utils';
 import { UserProfile } from '@/types';
 import { playSound } from '@/lib/sound';
 import {
@@ -168,7 +170,42 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     };
 
     StorageService.saveOnboardingProfile(profile);
-    playSound('execute', true);
+
+    // Also sync scheduleBlocks and chores into StorageService & Dexie
+    const currentSettings = StorageService.getSettings();
+    const updatedBlocks = (currentSettings.scheduleBlocks || DEFAULT_SCHEDULE_BLOCKS).map((b) => {
+      if (b.id === 'block-wake') return { ...b, time: morningReset, displayTime: formatTime24String(morningReset, currentSettings.militaryTime) };
+      if (b.id === 'block-breakfast') return { ...b, time: breakfast, displayTime: formatTime24String(breakfast, currentSettings.militaryTime) };
+      if (b.id === 'block-lunch') return { ...b, time: lunch, displayTime: formatTime24String(lunch, currentSettings.militaryTime) };
+      if (b.id === 'block-dinner') return { ...b, time: eveningReset, displayTime: formatTime24String(eveningReset, currentSettings.militaryTime) };
+      if (b.id === 'block-winddown') return { ...b, time: dayClosure, displayTime: formatTime24String(dayClosure, currentSettings.militaryTime) };
+      return b;
+    });
+    StorageService.saveSettings({
+      ...currentSettings,
+      scheduleBlocks: updatedBlocks,
+      userProfile: profile,
+    });
+
+    const mappedChores = chores.map((title, idx) => ({
+      id: `chore-onb-${idx + 1}`,
+      title,
+      slot: (idx === 0 ? 'morning' : idx === chores.length - 1 ? 'evening' : 'midday') as 'morning' | 'midday' | 'evening',
+      estimatedSeconds: 60,
+      completedDates: {},
+      isDefault: true,
+    }));
+    StorageService.saveChores(mappedChores);
+    void applyPrerequisitesToDatabase(
+      mappedChores,
+      profile.partnerName,
+      profile.partnerCadenceDays,
+      profile.motherName,
+      profile.motherCadenceDays,
+      Math.max(1, gestureIntervalDays)
+    );
+
+    playSound('execute');
     onComplete(profile);
   };
 

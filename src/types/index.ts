@@ -255,3 +255,15 @@ export interface GymSessionRecord {
   syncedAt?: string; // ISO
 }
 
+export interface ChoreRecordCloud {
+  id: string;
+  user_id?: string;
+  title: string;
+  slot: 'morning' | 'midday' | 'evening';
+  is_default: boolean;
+  completed_dates: Record<string, string>;
+  updated_at: string; // ISO
+  syncedAt?: string; // ISO
+}
+
+

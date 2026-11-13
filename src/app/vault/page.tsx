@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, DbAudit, seedDatabaseIfEmpty } from '@/lib/db';
+import { db, DbAudit, seedDatabaseIfEmpty, importDatabaseBackup } from '@/lib/db';
+import { StorageService } from '@/lib/storage';
 import { getTodayString, getPastNDays, formatFriendlyDate } from '@/lib/date-utils';
 import { TopHeader } from '@/components/TopHeader';
 import { playSound } from '@/lib/sound';
@@ -15,13 +16,16 @@ import {
   Info,
   HelpCircle,
   RotateCcw,
-  Download
+  Download,
+  Upload
 } from 'lucide-react';
 
 export default function VaultHub() {
   const [mounted, setMounted] = useState(false);
   const [todayDate, setTodayDate] = useState('');
   const [selectedAuditDate, setSelectedAuditDate] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importFeedback, setImportFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   
   // 3 Binary Questions State
   const [mealsYes, setMealsYes] = useState<boolean | null>(null);
@@ -42,6 +46,24 @@ export default function VaultHub() {
   }, []);
 
   const audits = useLiveQuery(() => db.audits.orderBy('date').reverse().toArray(), []);
+  const selectedDayMeals = useLiveQuery(
+    () => (selectedAuditDate ? db.meals.where('date').equals(selectedAuditDate).toArray() : []),
+    [selectedAuditDate]
+  );
+  const allChores = useLiveQuery(() => db.chores.toArray(), []);
+  const selectedDayPushups = useLiveQuery(
+    () => (selectedAuditDate ? db.pushup_logs.get(selectedAuditDate) : undefined),
+    [selectedAuditDate]
+  );
+  const selectedDayGym = useLiveQuery(
+    () => (selectedAuditDate ? db.gym_sessions.get(selectedAuditDate) : undefined),
+    [selectedAuditDate]
+  );
+
+  const inWindowMealsCount = selectedDayMeals?.filter((m) => !m.isOutlier).length || 0;
+  const totalDayMealsCount = selectedDayMeals?.length || 0;
+  const completedChoresCount = allChores?.filter((c) => selectedAuditDate && c.completedDates?.[selectedAuditDate]).length || 0;
+  const totalChoresCount = allChores?.length || 0;
 
   // Update form inputs when selectedAuditDate changes
   useEffect(() => {
@@ -65,11 +87,12 @@ export default function VaultHub() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (mealsYes === null || choresYes === null || composureYes === null) {
-      playSound('error', true);
+      playSound('error');
       return;
     }
 
-    playSound('execute', true);
+    playSound('execute');
+    const nowIso = new Date().toISOString();
     await db.audits.put({
       id: selectedAuditDate,
       date: selectedAuditDate,
@@ -77,8 +100,19 @@ export default function VaultHub() {
       completedChores: choresYes,
       maintainedComposure: composureYes,
       observation: observation.trim() || undefined,
-      completedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      completedAt: nowIso,
+      updatedAt: nowIso,
+      synced: 0,
+    });
+
+    StorageService.recordAudit({
+      date: selectedAuditDate,
+      completed: true,
+      completedAt: nowIso,
+      mealsOnSchedule: mealsYes,
+      sharedSpaceUnprompted: choresYes,
+      composedWithoutDefensiveness: composureYes,
+      frictionNote: observation.trim() || '',
     });
 
     setIsSaved(true);
@@ -97,7 +131,7 @@ export default function VaultHub() {
     : 0;
 
   const handleExportData = async () => {
-    const [allAudits, allMeals, allGestures, allChores, allProfiles, allPushups, allGym] = await Promise.all([
+    const [allAudits, allMeals, allGestures, allChoresList, allProfiles, allPushups, allGym, allTasks, allGroceries, allCadences] = await Promise.all([
       db.audits.toArray(),
       db.meals.toArray(),
       db.gestures.toArray(),
@@ -105,18 +139,25 @@ export default function VaultHub() {
       db.user_profile.toArray(),
       db.pushup_logs.toArray(),
       db.gym_sessions.toArray(),
+      db.tasks.toArray(),
+      db.groceries.toArray(),
+      db.cadences.toArray(),
     ]);
 
     const backup = {
-      version: '4.0',
+      version: '4.1',
       exportedAt: new Date().toISOString(),
       user_profile: allProfiles,
       meals: allMeals,
       initiative_ledger: allGestures,
       daily_audits: allAudits,
-      chores: allChores,
+      chores: allChoresList,
       pushup_logs: allPushups,
       gym_sessions: allGym,
+      tasks: allTasks,
+      groceries: allGroceries,
+      cadences: allCadences,
+      settings: StorageService.getSettings(),
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -126,7 +167,30 @@ export default function VaultHub() {
     a.download = `forge-telemetry-${todayDate}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    playSound('execute', true);
+    playSound('execute');
+  };
+
+  const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFeedback(null);
+    try {
+      const rawJson = await file.text();
+      const res = await importDatabaseBackup(rawJson);
+      playSound('execute');
+      setImportFeedback({
+        type: 'success',
+        message: `Restored ${res.restoredCount} records from backup successfully.`,
+      });
+    } catch (err: unknown) {
+      playSound('error');
+      const msg = err instanceof Error ? err.message : 'Invalid backup file';
+      setImportFeedback({ type: 'error', message: `Restore failed: ${msg}` });
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   if (!mounted) {
@@ -241,7 +305,7 @@ export default function VaultHub() {
                 <button
                   key={dateStr}
                   onClick={() => {
-                    playSound('click', true);
+                    playSound('click');
                     setSelectedAuditDate(dateStr);
                   }}
                   className={`h-11 rounded p-1 flex flex-col justify-between text-left transition-all ${blockBg} ${
@@ -285,13 +349,32 @@ export default function VaultHub() {
             )}
           </div>
 
+          {/* Live Telemetry Snapshot for Selected Date */}
+          <div className="mb-3.5 p-2.5 rounded bg-[#191919] border border-[#373737] flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-[#838383]">
+            <span>
+              🍽️ Meals: <strong className="text-[#E3E3E3]">{inWindowMealsCount}/3 in-window</strong> ({totalDayMealsCount} logged)
+            </span>
+            <span>
+              🧹 Chores: <strong className="text-[#E3E3E3]">{completedChoresCount}/{totalChoresCount} done</strong>
+            </span>
+            <span>
+              💪 Pushups: <strong className="text-[#E3E3E3]">{selectedDayPushups?.totalReps || 0}/{selectedDayPushups?.targetReps || 50}</strong>
+              {selectedDayGym?.completed ? ' • 🏋️ Gym ✓' : ''}
+            </span>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
             {/* Sensor 1: Meals */}
             <div className="p-3 rounded bg-[#202020] border border-[#373737] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <span className="text-[10px] uppercase font-mono text-[#838383] block">
-                  Sensor 01 // Routine
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase font-mono text-[#838383]">
+                    Sensor 01 // Routine
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#191919] border border-[#373737] text-[#838383]">
+                    {inWindowMealsCount}/3 on-schedule
+                  </span>
+                </div>
                 <p className="text-[#E3E3E3] font-medium mt-0.5">
                   1. Did you adhere to the 3-meal structured schedule today?
                 </p>
@@ -301,7 +384,7 @@ export default function VaultHub() {
                 <button
                   type="button"
                   onClick={() => {
-                    playSound('click', true);
+                    playSound('click');
                     setMealsYes(true);
                   }}
                   className={`px-3 py-1 rounded border text-xs font-medium transition-colors ${
@@ -315,7 +398,7 @@ export default function VaultHub() {
                 <button
                   type="button"
                   onClick={() => {
-                    playSound('click', true);
+                    playSound('click');
                     setMealsYes(false);
                   }}
                   className={`px-3 py-1 rounded border text-xs font-medium transition-colors ${
@@ -332,9 +415,14 @@ export default function VaultHub() {
             {/* Sensor 2: Shared Space Chores Unprompted */}
             <div className="p-3 rounded bg-[#202020] border border-[#373737] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <span className="text-[10px] uppercase font-mono text-[#838383] block">
-                  Sensor 02 // Initiative
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase font-mono text-[#838383]">
+                    Sensor 02 // Initiative
+                  </span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#191919] border border-[#373737] text-[#838383]">
+                    {completedChoresCount}/{totalChoresCount} completed
+                  </span>
+                </div>
                 <p className="text-[#E3E3E3] font-medium mt-0.5">
                   2. Did you execute shared space chores without being prompted?
                 </p>
@@ -344,7 +432,7 @@ export default function VaultHub() {
                 <button
                   type="button"
                   onClick={() => {
-                    playSound('click', true);
+                    playSound('click');
                     setChoresYes(true);
                   }}
                   className={`px-3 py-1 rounded border text-xs font-medium transition-colors ${
@@ -358,7 +446,7 @@ export default function VaultHub() {
                 <button
                   type="button"
                   onClick={() => {
-                    playSound('click', true);
+                    playSound('click');
                     setChoresYes(false);
                   }}
                   className={`px-3 py-1 rounded border text-xs font-medium transition-colors ${
@@ -387,7 +475,7 @@ export default function VaultHub() {
                 <button
                   type="button"
                   onClick={() => {
-                    playSound('click', true);
+                    playSound('click');
                     setComposureYes(true);
                   }}
                   className={`px-3 py-1 rounded border text-xs font-medium transition-colors ${
@@ -401,7 +489,7 @@ export default function VaultHub() {
                 <button
                   type="button"
                   onClick={() => {
-                    playSound('click', true);
+                    playSound('click');
                     setComposureYes(false);
                   }}
                   className={`px-3 py-1 rounded border text-xs font-medium transition-colors ${
@@ -438,7 +526,7 @@ export default function VaultHub() {
 
               <button
                 type="submit"
-                disabled={mealsYes === null || choresYes === null || composureYes === null}
+                disabled={mealsYes === null || choresYes === null || composureYes !== false && composureYes !== true}
                 className={`px-4 py-1.5 rounded font-medium transition-colors ${
                   mealsYes !== null && choresYes !== null && composureYes !== null
                     ? 'bg-[#337EA9] hover:bg-[#286a91] text-white'
@@ -451,24 +539,63 @@ export default function VaultHub() {
           </form>
         </div>
 
-        {/* Data Backup Option */}
-        <div className="notion-panel p-4 flex items-center justify-between">
-          <div>
-            <span className="text-xs font-medium text-[#E3E3E3] block">
-              Export Vault Telemetry
-            </span>
-            <span className="text-[11px] text-[#838383]">
-              Download complete IndexedDB backup as JSON
-            </span>
+        {/* Data Backup & Restore Option */}
+        <div className="notion-panel p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-xs font-medium text-[#E3E3E3] block">
+                Vault Telemetry Backup &amp; Restore
+              </span>
+              <span className="text-[11px] text-[#838383]">
+                Export or restore complete IndexedDB + Settings backup as JSON
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportData}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3 py-1.5 bg-[#202020] hover:bg-[#282828] border border-[#373737] rounded text-xs text-[#E3E3E3] flex items-center gap-1.5 transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5 text-[#337EA9]" />
+                <span>Restore JSON</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportData}
+                className="px-3 py-1.5 bg-[#202020] hover:bg-[#282828] border border-[#373737] rounded text-xs text-[#E3E3E3] flex items-center gap-1.5 transition-colors"
+              >
+                <Download className="w-3.5 h-3.5 text-[#838383]" />
+                <span>Download JSON</span>
+              </button>
+            </div>
           </div>
 
-          <button
-            onClick={handleExportData}
-            className="px-3 py-1.5 bg-[#202020] hover:bg-[#282828] border border-[#373737] rounded text-xs text-[#E3E3E3] flex items-center gap-1.5 transition-colors"
-          >
-            <Download className="w-3.5 h-3.5 text-[#838383]" />
-            <span>Download JSON</span>
-          </button>
+          {importFeedback && (
+            <div
+              className={`p-2.5 rounded border text-xs flex items-center justify-between ${
+                importFeedback.type === 'success'
+                  ? 'bg-[#1e2f26] border-[#2B593F] text-[#446B5E]'
+                  : 'bg-[#2b1d1d] border-[#8b2e2e] text-[#D9730D]'
+              }`}
+            >
+              <span>{importFeedback.message}</span>
+              <button
+                type="button"
+                onClick={() => setImportFeedback(null)}
+                className="text-[#838383] hover:text-[#E3E3E3] ml-2"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
       </main>

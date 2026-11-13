@@ -3,25 +3,27 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, DbMeal, DbChore, seedDatabaseIfEmpty } from '@/lib/db';
-import { getTodayString, getCurrentAndNextBlock, formatMinutesCountdown } from '@/lib/date-utils';
+import { db, DbChore, seedDatabaseIfEmpty } from '@/lib/db';
+import {
+  getTodayString,
+  getCurrentAndNextBlock,
+  formatMinutesCountdown,
+  formatTime24String,
+} from '@/lib/date-utils';
 import { TopHeader } from '@/components/TopHeader';
 import { OnboardingModal } from '@/components/OnboardingModal';
 import { NotificationPermissionBanner } from '@/components/NotificationPermissionBanner';
 import { PushupEngine } from '@/components/PushupEngine';
 import { StorageService } from '@/lib/storage';
 import { playSound } from '@/lib/sound';
-import { useNotificationScheduler } from '@/hooks/useNotificationScheduler';
+import { ScheduleBlock } from '@/types';
 import {
-  Clock,
   Check,
-  ChevronRight,
   Plus,
   Utensils,
   ShieldCheck,
-  AlertCircle,
-  Sparkles,
-  ArrowRight
+  ArrowRight,
+  Trash2,
 } from 'lucide-react';
 
 const SCHEDULE_ANCHORS = [
@@ -33,15 +35,25 @@ const SCHEDULE_ANCHORS = [
 ];
 
 export default function TodayExecutionHub() {
-  useNotificationScheduler();
   const [mounted, setMounted] = useState(false);
   const [todayDate, setTodayDate] = useState('');
   const [newChoreTitle, setNewChoreTitle] = useState('');
+  const [newChoreSlot, setNewChoreSlot] = useState<'morning' | 'midday' | 'evening'>('midday');
   const [isAddingChore, setIsAddingChore] = useState(false);
 
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [dateDisplay, setDateDisplay] = useState<string>('');
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [customBlocks, setCustomBlocks] = useState<ScheduleBlock[]>([]);
+  const [militaryTime, setMilitaryTime] = useState(false);
+
+  const loadSettingsState = () => {
+    const settings = StorageService.getSettings();
+    setMilitaryTime(Boolean(settings.militaryTime));
+    if (settings.scheduleBlocks && settings.scheduleBlocks.length > 0) {
+      setCustomBlocks(settings.scheduleBlocks);
+    }
+  };
 
   useEffect(() => {
     seedDatabaseIfEmpty();
@@ -49,6 +61,7 @@ export default function TodayExecutionHub() {
     if (!profile.onboarded && !profile.onboardingCompleted) {
       setShowOnboarding(true);
     }
+    loadSettingsState();
     const d = new Date();
     setTodayDate(getTodayString(d));
     setCurrentTime(d);
@@ -76,18 +89,33 @@ export default function TodayExecutionHub() {
 
   const chores = useLiveQuery(() => db.chores.toArray(), []);
 
-  // Anchor calculation
+  // Anchor calculation (uses configured schedule blocks from Setup if available)
   const now = currentTime || new Date(0);
-  const scheduleBlocksFormatted = SCHEDULE_ANCHORS.map((a) => ({
-    id: a.id,
-    title: a.title,
-    time: a.time,
-    displayTime: a.displayTime,
-    category: (a.slot === 'meal' ? 'meal' : 'wake') as 'meal' | 'wake' | 'work' | 'reset' | 'sleep',
-    description: '',
-    actionPrompt: '',
-  }));
-  const { currentBlock, nextBlock, minutesToNext } = getCurrentAndNextBlock(scheduleBlocksFormatted, now);
+  const activeAnchors =
+    customBlocks.length > 0
+      ? customBlocks.map((b) => ({
+          id: b.id,
+          title: b.title,
+          time: b.time,
+          displayTime: formatTime24String(b.time, militaryTime),
+          slot: b.isMealAnchor || b.category === 'meal' ? 'meal' : b.category,
+          mealType: b.mealType,
+          category: b.category,
+          description: b.description || '',
+          actionPrompt: b.actionPrompt || '',
+        }))
+      : SCHEDULE_ANCHORS.map((a) => ({
+          id: a.id,
+          title: a.title,
+          time: a.time,
+          displayTime: formatTime24String(a.time, militaryTime),
+          slot: a.slot,
+          mealType: a.mealType,
+          category: (a.slot === 'meal' ? 'meal' : 'wake') as 'meal' | 'wake' | 'work' | 'reset' | 'sleep',
+          description: '',
+          actionPrompt: '',
+        }));
+  const { currentBlock, nextBlock, minutesToNext } = getCurrentAndNextBlock(activeAnchors, now);
 
   // Meal punctuality calculation
   const breakfastDone = todayMeals?.some((m) => m.mealType === 'breakfast');
@@ -102,7 +130,7 @@ export default function TodayExecutionHub() {
   const choresCompletion = totalChores > 0 ? Math.round((completedChoresCount / totalChores) * 100) : 0;
 
   const handleToggleChore = async (chore: DbChore) => {
-    playSound('execute', true);
+    playSound('execute');
     const updated = { ...chore.completedDates };
     if (updated[todayDate]) {
       delete updated[todayDate];
@@ -113,22 +141,32 @@ export default function TodayExecutionHub() {
       completedDates: updated,
       updatedAt: new Date().toISOString(),
     });
+    StorageService.toggleChore(chore.id, todayDate);
   };
 
   const handleAddChore = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newChoreTitle.trim()) return;
-    playSound('click', true);
+    playSound('click');
+    const id = `chore-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     await db.chores.put({
-      id: `chore-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id,
       title: newChoreTitle.trim(),
-      slot: 'midday',
+      slot: newChoreSlot,
       isDefault: false,
       completedDates: {},
       updatedAt: new Date().toISOString(),
     });
+    StorageService.addChore(newChoreTitle.trim(), newChoreSlot);
     setNewChoreTitle('');
     setIsAddingChore(false);
+  };
+
+  const handleDeleteChore = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    playSound('click');
+    await db.chores.delete(id);
+    StorageService.deleteChore(id);
   };
 
   if (!mounted) {
@@ -147,7 +185,10 @@ export default function TodayExecutionHub() {
 
       <OnboardingModal
         isOpen={showOnboarding}
-        onComplete={() => setShowOnboarding(false)}
+        onComplete={() => {
+          loadSettingsState();
+          setShowOnboarding(false);
+        }}
       />
 
       <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
@@ -263,7 +304,7 @@ export default function TodayExecutionHub() {
           </div>
 
           <div className="space-y-2">
-            {SCHEDULE_ANCHORS.map((anchor) => {
+            {activeAnchors.map((anchor) => {
               const isMeal = anchor.slot === 'meal';
               let isDone = false;
               if (anchor.mealType === 'breakfast') isDone = !!breakfastDone;
@@ -332,7 +373,7 @@ export default function TodayExecutionHub() {
 
           {/* Add Inline Chore */}
           {isAddingChore && (
-            <form onSubmit={handleAddChore} className="mb-3 flex items-center gap-2">
+            <form onSubmit={handleAddChore} className="mb-3 flex flex-wrap sm:flex-nowrap items-center gap-2">
               <input
                 type="text"
                 value={newChoreTitle}
@@ -341,6 +382,15 @@ export default function TodayExecutionHub() {
                 className="flex-1 bg-[#202020] border border-[#373737] rounded px-3 py-1.5 text-xs text-[#E3E3E3] placeholder-[#838383] focus:outline-none focus:border-[#337EA9]"
                 autoFocus
               />
+              <select
+                value={newChoreSlot}
+                onChange={(e) => setNewChoreSlot(e.target.value as 'morning' | 'midday' | 'evening')}
+                className="bg-[#202020] border border-[#373737] rounded px-2 py-1.5 text-xs text-[#E3E3E3] focus:outline-none"
+              >
+                <option value="morning">Morning</option>
+                <option value="midday">Midday</option>
+                <option value="evening">Evening</option>
+              </select>
               <button
                 type="submit"
                 className="px-3 py-1.5 bg-[#337EA9] hover:bg-[#286a91] text-white rounded text-xs font-medium"
@@ -358,7 +408,7 @@ export default function TodayExecutionHub() {
                 <div
                   key={chore.id}
                   onClick={() => handleToggleChore(chore)}
-                  className="flex items-center gap-3 p-2 rounded hover:bg-[#202020] cursor-pointer transition-colors text-xs"
+                  className="flex items-center gap-3 p-2 rounded hover:bg-[#202020] cursor-pointer transition-colors text-xs group"
                 >
                   <input
                     type="checkbox"
@@ -376,6 +426,14 @@ export default function TodayExecutionHub() {
                   <span className="text-[10px] text-[#838383] uppercase px-1.5 py-0.5 rounded bg-[#202020] border border-[#373737]">
                     {chore.slot}
                   </span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteChore(e, chore.id)}
+                    className="text-[#838383] hover:text-[#EB5757] opacity-60 group-hover:opacity-100 transition-opacity p-1"
+                    title="Delete chore"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               );
             })}

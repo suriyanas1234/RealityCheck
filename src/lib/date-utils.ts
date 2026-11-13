@@ -24,6 +24,20 @@ export function formatTimeShort(d: Date, military: boolean = false): string {
   });
 }
 
+export function formatTime24String(time24: string, military: boolean = false): string {
+  if (!time24 || !time24.includes(':')) return time24;
+  const [hStr, mStr] = time24.split(':');
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10) || 0;
+  if (isNaN(h)) return time24;
+  if (military) {
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const displayH = h % 12 || 12;
+  return `${displayH}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
 export function parseMinutesFromTimeString(timeStr: string): number {
   const [h, m] = timeStr.split(':').map(Number);
   return h * 60 + (m || 0);

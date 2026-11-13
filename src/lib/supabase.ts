@@ -11,6 +11,7 @@ import {
   UserProfileRecord,
   PushupLogRecord,
   GymSessionRecord,
+  ChoreRecordCloud,
 } from '@/types';
 
 export function getSupabaseClient() {
@@ -677,6 +678,62 @@ export async function fetchGymSessionsSince(
   }
 }
 
+export async function upsertChoreRecords(
+  records: ChoreRecordCloud[],
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!records.length) return { success: true };
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+  try {
+    const { error } = await client.from('chores').upsert(
+      records.map((r) => ({
+        id: r.id,
+        user_id: r.user_id || null,
+        title: r.title,
+        slot: r.slot,
+        is_default: r.is_default,
+        completed_dates: r.completed_dates,
+        updated_at: r.updated_at,
+      }))
+    );
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+export async function fetchChoresSince(
+  userId: string,
+  sinceIso: string,
+  urlOverride?: string,
+  keyOverride?: string
+): Promise<{ success: boolean; records?: ChoreRecordCloud[]; error?: string }> {
+  const settings = StorageService.getSettings();
+  const url = urlOverride || settings.supabaseConfig?.url || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = keyOverride || settings.supabaseConfig?.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { success: false, error: 'No Supabase credentials provided.' };
+  const client = createCustomSupabaseClient(url.trim(), anonKey.trim());
+  if (!client) return { success: false, error: 'Could not initialize Supabase client.' };
+  try {
+    const { data, error } = await client
+      .from('chores')
+      .select('*')
+      .eq('user_id', userId)
+      .gt('updated_at', sinceIso);
+    if (error) return { success: false, error: error.message };
+    return { success: true, records: (data || []) as ChoreRecordCloud[] };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
 export const SUPABASE_SQL_SCHEMA = `-- RealityCheck Complete Database Schema
 -- Run this in your Supabase SQL Editor (Dashboard > SQL Editor > New query)
 
@@ -756,16 +813,6 @@ CREATE POLICY "Allow all on audits" ON reality_audits FOR ALL USING (true) WITH 
 -- 3. Cloud Sync Engine Tables (auth-scoped, RLS enforced)
 -- ============================================================
 
--- Profiles Table (Stores user onboarding schedule & preferences)
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  schedule JSONB NOT NULL DEFAULT '{"wakeTime":"08:00","breakfastTime":"08:30","lunchTime":"13:00","dinnerTime":"18:30","nightResetTime":"22:30"}',
-  meal_staples JSONB NOT NULL DEFAULT '{"staple1":"Rice, Dal, Yogurt","staple2":"3 Eggs, Toast, Fruit","staple3":"Curd Rice"}',
-  targets JSONB NOT NULL DEFAULT '{"relationships":["Mother","Partner"],"dailyChores":["Sink Clear","Kitchen Counters","Desk Reset"]}',
-  is_onboarded BOOLEAN DEFAULT true,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
 -- Execution Logs Table (Stores offline/online activity entries)
 CREATE TABLE IF NOT EXISTS public.execution_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -778,27 +825,37 @@ CREATE TABLE IF NOT EXISTS public.execution_logs (
   completed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Row Level Security Policies
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.execution_logs ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage their own profile" ON public.profiles
-  FOR ALL USING (auth.uid() = id);
 
 CREATE POLICY "Users can manage their own execution logs" ON public.execution_logs
   FOR ALL USING (auth.uid() = user_id);
-
--- ============================================================
--- 4. Cloud Sync Engine Tables (auth-scoped, RLS enforced)
--- ============================================================
 
 -- Profiles (mirrors local user_profile)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id TEXT PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  schedule JSONB DEFAULT '{}'::jsonb,
+  meal_staples JSONB DEFAULT '{}'::jsonb,
+  targets JSONB DEFAULT '{}'::jsonb,
+  is_onboarded BOOLEAN DEFAULT true,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Chores (mirrors local chores & completion dates)
+CREATE TABLE IF NOT EXISTS public.chores (
+  id TEXT PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  slot TEXT NOT NULL,
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  completed_dates JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.chores ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own chores" ON public.chores
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Meals
 CREATE TABLE IF NOT EXISTS public.meals (

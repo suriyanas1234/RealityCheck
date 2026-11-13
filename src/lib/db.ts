@@ -1,5 +1,5 @@
 import Dexie, { Table } from 'dexie';
-import { getTodayString } from './date-utils';
+import { getTodayString, formatTime24String, formatTimeShort } from './date-utils';
 
 export interface DbMeal {
   id: string;
@@ -240,16 +240,88 @@ export const MEAL_SCHEDULE_WINDOWS = {
   },
 };
 
+function decimalHourTo24Str(dec: number): string {
+  const clamped = Math.max(0, Math.min(23.98, dec));
+  const h = Math.floor(clamped);
+  const m = Math.round((clamped - h) * 60);
+  const finalH = m === 60 ? Math.min(23, h + 1) : h;
+  const finalM = m === 60 ? 0 : m;
+  return `${String(finalH).padStart(2, '0')}:${String(finalM).padStart(2, '0')}`;
+}
+
+export function getMealScheduleWindows(): typeof MEAL_SCHEDULE_WINDOWS {
+  if (typeof window === 'undefined') return MEAL_SCHEDULE_WINDOWS;
+  try {
+    const raw = localStorage.getItem('reality_check_settings_v1');
+    if (!raw) return MEAL_SCHEDULE_WINDOWS;
+    const settings = JSON.parse(raw);
+    const military = Boolean(settings.militaryTime);
+    const blocks: Array<{ id?: string; time?: string; mealType?: string }> =
+      settings.scheduleBlocks || [];
+    const anchors = settings.userProfile?.anchors;
+
+    const resolveMealTime = (
+      mealType: 'breakfast' | 'lunch' | 'dinner',
+      fallback24: string
+    ): string => {
+      const block = blocks.find(
+        (b) =>
+          b.mealType === mealType ||
+          b.id === `block-${mealType}` ||
+          b.id === `anchor-${mealType}`
+      );
+      if (block?.time && block.time.includes(':')) return block.time;
+      if (mealType === 'breakfast' && anchors?.breakfast) return anchors.breakfast;
+      if (mealType === 'lunch' && anchors?.lunch) return anchors.lunch;
+      if (mealType === 'dinner' && anchors?.eveningReset) return anchors.eveningReset;
+      return fallback24;
+    };
+
+    const buildWindow = (time24: string, preHours: number, postHours: number) => {
+      const [hStr, mStr] = time24.split(':');
+      const targetDec = (parseInt(hStr, 10) || 0) + (parseInt(mStr, 10) || 0) / 60;
+      const startHour = Math.max(0, targetDec - preHours);
+      const endHour = Math.min(23.95, targetDec + postHours);
+      const labelStart = formatTime24String(decimalHourTo24Str( targetDec - 0.5 ), military);
+      const labelEnd = formatTime24String(decimalHourTo24Str( targetDec + 1.0 ), military);
+      return {
+        target: formatTime24String(time24, military),
+        startHour,
+        endHour,
+        label: `${labelStart} – ${labelEnd}`,
+      };
+    };
+
+    return {
+      breakfast: buildWindow(resolveMealTime('breakfast', '08:30'), 1.0, 1.25),
+      lunch: buildWindow(resolveMealTime('lunch', '13:00'), 0.5, 1.25),
+      dinner: buildWindow(resolveMealTime('dinner', '18:30'), 0.5, 1.75),
+    };
+  } catch {
+    return MEAL_SCHEDULE_WINDOWS;
+  }
+}
+
 // Check if a timestamp is within the scheduled anchor window
 export function evaluateMealWindow(
   mealType: 'breakfast' | 'lunch' | 'dinner',
   dateObj: Date = new Date()
 ): { isOutlier: boolean; reason?: string } {
-  const window = MEAL_SCHEDULE_WINDOWS[mealType];
+  const windows = getMealScheduleWindows();
+  const window = windows[mealType];
   const decimalHour = dateObj.getHours() + dateObj.getMinutes() / 60;
+  let military = false;
+  if (typeof globalThis.window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('reality_check_settings_v1');
+      if (raw) military = Boolean(JSON.parse(raw).militaryTime);
+    } catch {
+      // ignore
+    }
+  }
+  const timeStr = formatTimeShort(dateObj, military);
 
   if (decimalHour < window.startHour) {
-    const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return {
       isOutlier: true,
       reason: `Premature meal at ${timeStr} (target window is ${window.label})`,
@@ -257,10 +329,9 @@ export function evaluateMealWindow(
   }
 
   if (decimalHour > window.endHour) {
-    const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return {
       isOutlier: true,
-      reason: `Out-of-window outlier at ${timeStr} (e.g. 11 AM irregular cooking; scheduled anchor is ${window.target})`,
+      reason: `Out-of-window outlier at ${timeStr} (scheduled anchor is ${window.target})`,
     };
   }
 
@@ -405,11 +476,22 @@ export async function applyPrerequisitesToDatabase(
   partnerName: string = 'Partner',
   partnerCadenceDays: number = 14,
   motherName: string = 'Mother',
-  motherCadenceDays: number = 3
+  motherCadenceDays: number = 3,
+  gestureCadenceDays?: number,
+  partnerNotes?: string,
+  motherNotes?: string
 ) {
   if (typeof window === 'undefined') return;
 
-  // 1. Sync chores
+  // 1. Sync chores (update/add configured chores and remove deleted ones)
+  const incomingIds = new Set(choresList.map((c) => c.id));
+  const existingAll = await db.chores.toArray();
+  for (const existing of existingAll) {
+    if (!incomingIds.has(existing.id)) {
+      await db.chores.delete(existing.id);
+    }
+  }
+
   for (const c of choresList) {
     const existing = await db.chores.get(c.id);
     if (!existing) {
@@ -430,23 +512,33 @@ export async function applyPrerequisitesToDatabase(
     }
   }
 
-  // 2. Update Cadences
+  // 2. Update Cadences while preserving existing lastCompletedDate
+  const [existingDateNight, existingGesture, existingMom] = await Promise.all([
+    db.cadences.get('cadence-date-night'),
+    db.cadences.get('cadence-unprompted-gesture'),
+    db.cadences.get('cadence-mom-call'),
+  ]);
+
   await db.cadences.put({
     id: 'cadence-date-night',
     title: `Plan Complete Date for ${partnerName} (Activity + Food + Logistics)`,
     recipient: partnerName,
     cadenceDays: partnerCadenceDays,
-    lastCompletedDate: getTodayString(new Date(Date.now() - 5 * 86400000)),
-    instructions: `Bi-weekly prompt: Book complete date for ${partnerName} without asking partner to make decisions or research venues.`,
+    lastCompletedDate: existingDateNight?.lastCompletedDate,
+    instructions:
+      partnerNotes ||
+      `Bi-weekly prompt: Book complete date for ${partnerName} without asking partner to make decisions or research venues.`,
   });
 
   await db.cadences.put({
     id: 'cadence-unprompted-gesture',
     title: `Unprompted Flower / Care Gesture for ${partnerName}`,
     recipient: partnerName,
-    cadenceDays: partnerCadenceDays,
-    lastCompletedDate: getTodayString(new Date(Date.now() - 6 * 86400000)),
-    instructions: `Bi-weekly prompt: Deliver favorite flowers or surprise treat to ${partnerName} unprompted.`,
+    cadenceDays: gestureCadenceDays || partnerCadenceDays,
+    lastCompletedDate: existingGesture?.lastCompletedDate,
+    instructions:
+      partnerNotes ||
+      `Bi-weekly prompt: Deliver favorite flowers or surprise treat to ${partnerName} unprompted.`,
   });
 
   await db.cadences.put({
@@ -454,8 +546,10 @@ export async function applyPrerequisitesToDatabase(
     title: `Unprompted Check-in Call with ${motherName}`,
     recipient: motherName,
     cadenceDays: motherCadenceDays,
-    lastCompletedDate: getTodayString(new Date(Date.now() - 2 * 86400000)),
-    instructions: `Reach out to ${motherName} unprompted before any reminder is needed.`,
+    lastCompletedDate: existingMom?.lastCompletedDate,
+    instructions:
+      motherNotes ||
+      `Reach out to ${motherName} unprompted before any reminder is needed.`,
   });
 }
 
@@ -520,7 +614,7 @@ export async function clearAllHistoricalDataFromDatabase(): Promise<void> {
   if (typeof window === 'undefined') return;
   await db.transaction(
     'rw',
-    [db.meals, db.gestures, db.audits, db.pushup_logs, db.gym_sessions, db.chores],
+    [db.meals, db.gestures, db.audits, db.pushup_logs, db.gym_sessions, db.chores, db.cadences],
     async () => {
       await db.meals.clear();
       await db.gestures.clear();
@@ -530,6 +624,87 @@ export async function clearAllHistoricalDataFromDatabase(): Promise<void> {
       await db.chores.toCollection().modify((chore) => {
         chore.completedDates = {};
       });
+      await db.cadences.toCollection().modify((cadence) => {
+        delete cadence.lastCompletedDate;
+      });
     }
   );
+}
+
+// Import a complete JSON backup into Dexie IndexedDB and localStorage
+export async function importDatabaseBackup(rawJson: string): Promise<{ success: boolean; count: number; error?: string }> {
+  if (typeof window === 'undefined') return { success: false, count: 0, error: 'Not running in browser' };
+  try {
+    const data = JSON.parse(rawJson);
+    if (!data || typeof data !== 'object') {
+      return { success: false, count: 0, error: 'Invalid backup JSON object.' };
+    }
+
+    let importedCount = 0;
+
+    if (Array.isArray(data.meals)) {
+      await db.meals.bulkPut(data.meals);
+      importedCount += data.meals.length;
+    }
+    if (Array.isArray(data.chores)) {
+      await db.chores.bulkPut(data.chores);
+      importedCount += data.chores.length;
+    }
+    const gesturesList = Array.isArray(data.initiative_ledger)
+      ? data.initiative_ledger
+      : Array.isArray(data.gestures)
+      ? data.gestures
+      : null;
+    if (gesturesList) {
+      await db.gestures.bulkPut(gesturesList);
+      importedCount += gesturesList.length;
+    }
+    const auditsList = Array.isArray(data.daily_audits)
+      ? data.daily_audits
+      : Array.isArray(data.audits)
+      ? data.audits
+      : null;
+    if (auditsList) {
+      await db.audits.bulkPut(auditsList);
+      importedCount += auditsList.length;
+    }
+    if (Array.isArray(data.cadences)) {
+      await db.cadences.bulkPut(data.cadences);
+      importedCount += data.cadences.length;
+    }
+    if (Array.isArray(data.user_profile)) {
+      await db.user_profile.bulkPut(data.user_profile);
+      importedCount += data.user_profile.length;
+    }
+    if (Array.isArray(data.pushup_logs)) {
+      await db.pushup_logs.bulkPut(data.pushup_logs);
+      importedCount += data.pushup_logs.length;
+    }
+    if (Array.isArray(data.gym_sessions)) {
+      await db.gym_sessions.bulkPut(data.gym_sessions);
+      importedCount += data.gym_sessions.length;
+    }
+    if (Array.isArray(data.tasks)) {
+      await db.tasks.bulkPut(data.tasks);
+      importedCount += data.tasks.length;
+    }
+    if (Array.isArray(data.groceries)) {
+      await db.groceries.bulkPut(data.groceries);
+      importedCount += data.groceries.length;
+    }
+    if (data.settings && typeof data.settings === 'object') {
+      localStorage.setItem('reality_check_settings_v1', JSON.stringify(data.settings));
+      if (data.settings.userProfile) {
+        localStorage.setItem('reality_check_profile_v1', JSON.stringify(data.settings.userProfile));
+      }
+    }
+
+    return { success: true, count: importedCount };
+  } catch (err) {
+    return {
+      success: false,
+      count: 0,
+      error: err instanceof Error ? err.message : 'Failed to parse backup JSON',
+    };
+  }
 }

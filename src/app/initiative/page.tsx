@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, seedDatabaseIfEmpty } from '@/lib/db';
 import { getTodayString, getDayDifference } from '@/lib/date-utils';
+import { StorageService } from '@/lib/storage';
 import { TopHeader } from '@/components/TopHeader';
 import { playSound } from '@/lib/sound';
 import {
@@ -31,6 +32,8 @@ export default function InitiativeHub() {
   const [mounted, setMounted] = useState(false);
   const [todayDate, setTodayDate] = useState('');
   const [activeTab, setActiveTab] = useState<RecipientTab>('partner');
+  const [partnerLabel, setPartnerLabel] = useState('Partner');
+  const [motherLabel, setMotherLabel] = useState('Mother');
 
   // Modal / Entry Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -49,6 +52,9 @@ export default function InitiativeHub() {
   useEffect(() => {
     seedDatabaseIfEmpty();
     setTodayDate(getTodayString());
+    const profile = StorageService.getUserProfile();
+    if (profile.partnerName) setPartnerLabel(profile.partnerName);
+    if (profile.motherName) setMotherLabel(profile.motherName);
     setMounted(true);
   }, []);
 
@@ -61,22 +67,37 @@ export default function InitiativeHub() {
   const proactiveCount = gestures?.filter((g) => g.isProactive).length || 0;
   const reactiveCount = gestures?.filter((g) => !g.isProactive).length || 0;
 
-  // Partner cadence: days since last partner action
-  const partnerCadence = cadences?.find((c) => c.recipient === 'Partner');
-  const partnerDaysAgo = partnerCadence?.lastCompletedDate
-    ? getDayDifference(partnerCadence.lastCompletedDate, todayDate)
-    : 999;
-  const partnerCadenceDays = partnerCadence?.cadenceDays || 14;
-  const partnerDaysRemaining = Math.max(0, partnerCadenceDays - partnerDaysAgo);
-  const partnerIsDue = partnerDaysAgo >= partnerCadenceDays;
+  // Partner cadences (by stable ID, with live fallback to proactive gestures)
+  const dateNightCadence = cadences?.find((c) => c.id === 'cadence-date-night');
+  const gestureCadence = cadences?.find((c) => c.id === 'cadence-unprompted-gesture');
 
-  // Mother cadence: days since last text update
-  const motherCadence = cadences?.find((c) => c.recipient === 'Mother');
-  const motherDaysAgo = motherCadence?.lastCompletedDate
-    ? getDayDifference(motherCadence.lastCompletedDate, todayDate)
+  const latestDatePlanDate =
+    gestures?.find((g) => g.recipient === 'partner' && g.isProactive && g.actionType === 'date_plan')?.date ||
+    dateNightCadence?.lastCompletedDate;
+  const datePlanDaysAgo = latestDatePlanDate ? getDayDifference(latestDatePlanDate, todayDate) : 999;
+  const datePlanCadenceDays = dateNightCadence?.cadenceDays || 14;
+  const datePlanDaysRemaining = Math.max(0, datePlanCadenceDays - datePlanDaysAgo);
+  const datePlanIsDue = datePlanDaysAgo >= datePlanCadenceDays;
+
+  const latestPartnerGestureDate =
+    gestures?.find(
+      (g) => g.recipient === 'partner' && g.isProactive && g.actionType !== 'date_plan'
+    )?.date || gestureCadence?.lastCompletedDate;
+  const gestureDaysAgo = latestPartnerGestureDate ? getDayDifference(latestPartnerGestureDate, todayDate) : 999;
+  const gestureCadenceDays = gestureCadence?.cadenceDays || 14;
+  const gestureDaysRemaining = Math.max(0, gestureCadenceDays - gestureDaysAgo);
+  const gestureIsDue = gestureDaysAgo >= gestureCadenceDays;
+
+  // Mother cadence: days since last proactive check-in / text update
+  const motherCadence = cadences?.find((c) => c.id === 'cadence-mom-call') || cadences?.find((c) => c.recipient === 'Mother');
+  const latestMotherDate =
+    gestures?.find((g) => g.recipient === 'mother' && g.isProactive)?.date ||
+    motherCadence?.lastCompletedDate;
+  const motherDaysAgo = latestMotherDate
+    ? getDayDifference(latestMotherDate, todayDate)
     : 999;
   const motherCadenceDays = motherCadence?.cadenceDays || 3;
-  const motherIsDue = motherDaysAgo > motherCadenceDays;
+  const motherIsDue = motherDaysAgo >= motherCadenceDays;
 
   const filteredGestures = useMemo(() => {
     if (!gestures) return [];
@@ -87,7 +108,7 @@ export default function InitiativeHub() {
 
   const openModal = (tab: RecipientTab, presetCategory?: ActionCategory) => {
     setRecipient(tab);
-    setRecipientName(tab === 'partner' ? 'Partner' : 'Mother');
+    setRecipientName(tab === 'partner' ? partnerLabel : motherLabel);
     setCategory(presetCategory || (tab === 'partner' ? 'gesture' : 'day_update_text'));
     setActionTitle(
       presetCategory === 'date_plan'
@@ -110,13 +131,13 @@ export default function InitiativeHub() {
 
     if (wasPrompted === null) {
       setErrorMsg('Mandatory Initiative Check: You must declare if this was prompted.');
-      playSound('error', true);
+      playSound('error');
       return;
     }
 
     if (!actionTitle.trim()) {
       setErrorMsg('Action title is required.');
-      playSound('error', true);
+      playSound('error');
       return;
     }
 
@@ -129,7 +150,7 @@ export default function InitiativeHub() {
       timestamp: now.toISOString(),
       recipient,
       recipientName:
-        recipient === 'partner' ? 'Partner' : recipient === 'mother' ? 'Mother' : recipientName,
+        recipient === 'partner' ? partnerLabel : recipient === 'mother' ? motherLabel : recipientName,
       action: actionTitle.trim(),
       actionType: category,
       details: details.trim() || undefined,
@@ -139,20 +160,20 @@ export default function InitiativeHub() {
       updatedAt: now.toISOString(),
     });
 
-    // Update cadence lastCompletedDate if applicable
-    if (recipient === 'partner') {
-      const match = cadences?.find((c) => c.recipient === 'Partner');
-      if (match) {
-        await db.cadences.update(match.id, { lastCompletedDate: todayDate });
-      }
-    } else if (recipient === 'mother') {
-      const match = cadences?.find((c) => c.recipient === 'Mother');
-      if (match) {
-        await db.cadences.update(match.id, { lastCompletedDate: todayDate });
+    // Only proactive (unprompted) actions reset the leadership cadence timer
+    if (isProactive) {
+      if (recipient === 'partner') {
+        if (category === 'date_plan') {
+          await db.cadences.update('cadence-date-night', { lastCompletedDate: todayDate });
+        } else {
+          await db.cadences.update('cadence-unprompted-gesture', { lastCompletedDate: todayDate });
+        }
+      } else if (recipient === 'mother') {
+        await db.cadences.update('cadence-mom-call', { lastCompletedDate: todayDate });
       }
     }
 
-    playSound(isProactive ? 'execute' : 'click', true);
+    playSound(isProactive ? 'execute' : 'click');
     setIsModalOpen(false);
     setDetails('');
     setWasPrompted(null);
@@ -166,7 +187,7 @@ export default function InitiativeHub() {
       date: todayDate,
       timestamp: now.toISOString(),
       recipient: 'mother',
-      recipientName: 'Mother',
+      recipientName: motherLabel,
       action: 'Logged Daily Day Update Text',
       actionType: 'day_update_text',
       wasPrompted: false,
@@ -174,16 +195,13 @@ export default function InitiativeHub() {
       updatedAt: now.toISOString(),
     });
 
-    const match = cadences?.find((c) => c.recipient === 'Mother');
-    if (match) {
-      await db.cadences.update(match.id, { lastCompletedDate: todayDate });
-    }
+    await db.cadences.update('cadence-mom-call', { lastCompletedDate: todayDate });
 
-    playSound('execute', true);
+    playSound('execute');
   };
 
   const handleDeleteGesture = async (id: string) => {
-    playSound('click', true);
+    playSound('click');
     await db.gestures.delete(id);
   };
 
@@ -228,7 +246,7 @@ export default function InitiativeHub() {
         <div className="flex items-center gap-2 border-b border-[#373737] pb-2">
           <button
             onClick={() => {
-              playSound('click', true);
+              playSound('click');
               setActiveTab('partner');
             }}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
@@ -238,11 +256,11 @@ export default function InitiativeHub() {
             }`}
           >
             <HeartHandshake className="w-3.5 h-3.5" />
-            <span>Partner</span>
+            <span>{partnerLabel}</span>
           </button>
           <button
             onClick={() => {
-              playSound('click', true);
+              playSound('click');
               setActiveTab('mother');
             }}
             className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
@@ -252,50 +270,97 @@ export default function InitiativeHub() {
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            <span>Mother / Family</span>
+            <span>{motherLabel} / Family</span>
           </button>
         </div>
 
         {/* PARTNER TAB */}
         {activeTab === 'partner' && (
           <div className="space-y-4">
-            {/* Cadence Countdown Card */}
-            <div
-              className={`notion-panel p-4 border-l-4 ${
-                partnerIsDue ? 'border-l-[#D9730D]' : 'border-l-[#2B593F]'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-[#838383] block">
-                    Bi-Weekly Cadence
+            {/* Dual Partner Cadence Countdown Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Date Night Cadence */}
+              <div
+                className={`notion-panel p-4 border-l-4 ${
+                  datePlanIsDue ? 'border-l-[#D9730D]' : 'border-l-[#2B593F]'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] uppercase font-mono text-[#838383] block">
+                      Date Planning Cadence
+                    </span>
+                    <h4 className="text-sm font-semibold text-[#E3E3E3] mt-0.5">
+                      Complete Date Night
+                    </h4>
+                    <p className="text-[11px] text-[#838383] mt-1">
+                      {datePlanIsDue
+                        ? latestDatePlanDate
+                          ? `Overdue by ${datePlanDaysAgo - datePlanCadenceDays} day(s). Book Activity + Food + Logistics.`
+                          : 'No proactive date logged yet. Plan a complete date.'
+                        : `${datePlanDaysRemaining} day(s) remaining until next date target.`}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold shrink-0 ${
+                      datePlanIsDue
+                        ? 'bg-[#291f15] border border-[#523215] text-[#D9730D]'
+                        : 'bg-[#1e2f26] border border-[#2B593F] text-[#446B5E]'
+                    }`}
+                  >
+                    {datePlanIsDue ? 'Action Due' : 'Nominal'}
                   </span>
-                  <h4 className="text-sm font-semibold text-[#E3E3E3] mt-0.5">
-                    Next Date / Gesture Target
-                  </h4>
-                  <p className="text-[11px] text-[#838383] mt-1">
-                    {partnerIsDue
-                      ? `Overdue by ${partnerDaysAgo - partnerCadenceDays} day(s). Execute a proactive date or gesture.`
-                      : `${partnerDaysRemaining} day(s) remaining until next target.`}
-                  </p>
                 </div>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold shrink-0 ${
-                    partnerIsDue
-                      ? 'bg-[#291f15] border border-[#523215] text-[#D9730D]'
-                      : 'bg-[#1e2f26] border border-[#2B593F] text-[#446B5E]'
-                  }`}
-                >
-                  {partnerIsDue ? 'Action Due' : 'Nominal'}
-                </span>
+                <div className="mt-3 pt-2.5 border-t border-[#373737] flex items-center justify-between text-[11px] font-mono text-[#838383]">
+                  <span>Every {datePlanCadenceDays}d</span>
+                  <span>
+                    {latestDatePlanDate
+                      ? `Last: ${datePlanDaysAgo}d ago`
+                      : 'No logs yet'}
+                  </span>
+                </div>
               </div>
-              <div className="mt-3 pt-2.5 border-t border-[#373737] flex items-center justify-between text-[11px] font-mono text-[#838383]">
-                <span>Cadence: Every {partnerCadenceDays} days</span>
-                <span>
-                  {partnerCadence?.lastCompletedDate
-                    ? `Last: ${partnerDaysAgo} day${partnerDaysAgo === 1 ? '' : 's'} ago`
-                    : 'No logs yet'}
-                </span>
+
+              {/* Unprompted Gesture Cadence */}
+              <div
+                className={`notion-panel p-4 border-l-4 ${
+                  gestureIsDue ? 'border-l-[#D9730D]' : 'border-l-[#2B593F]'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] uppercase font-mono text-[#838383] block">
+                      Care Gesture Cadence
+                    </span>
+                    <h4 className="text-sm font-semibold text-[#E3E3E3] mt-0.5">
+                      Unprompted Gesture / Takeover
+                    </h4>
+                    <p className="text-[11px] text-[#838383] mt-1">
+                      {gestureIsDue
+                        ? latestPartnerGestureDate
+                          ? `Overdue by ${gestureDaysAgo - gestureCadenceDays} day(s). Execute an unprompted gesture.`
+                          : 'No proactive gesture logged yet. Deliver flowers, snack, or chore takeover.'
+                        : `${gestureDaysRemaining} day(s) remaining until next gesture target.`}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold shrink-0 ${
+                      gestureIsDue
+                        ? 'bg-[#291f15] border border-[#523215] text-[#D9730D]'
+                        : 'bg-[#1e2f26] border border-[#2B593F] text-[#446B5E]'
+                    }`}
+                  >
+                    {gestureIsDue ? 'Action Due' : 'Nominal'}
+                  </span>
+                </div>
+                <div className="mt-3 pt-2.5 border-t border-[#373737] flex items-center justify-between text-[11px] font-mono text-[#838383]">
+                  <span>Every {gestureCadenceDays}d</span>
+                  <span>
+                    {latestPartnerGestureDate
+                      ? `Last: ${gestureDaysAgo}d ago`
+                      : 'No logs yet'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -354,7 +419,9 @@ export default function InitiativeHub() {
                   </h4>
                   <p className="text-[11px] text-[#838383] mt-1">
                     {motherIsDue
-                      ? `⚠️ Action Required — ${motherDaysAgo} days since last unprompted text update.`
+                      ? latestMotherDate
+                        ? `⚠️ Action Required — ${motherDaysAgo} days since last unprompted update.`
+                        : `⚠️ Action Required — No unprompted check-in logged yet for ${motherLabel}.`
                       : `${motherDaysAgo} day(s) since last text update. Nominal.`}
                   </p>
                 </div>
@@ -371,7 +438,7 @@ export default function InitiativeHub() {
               <div className="mt-3 pt-2.5 border-t border-[#373737] flex items-center justify-between text-[11px] font-mono text-[#838383]">
                 <span>Cadence: Every {motherCadenceDays} days</span>
                 <span>
-                  {motherCadence?.lastCompletedDate
+                  {latestMotherDate
                     ? `Last: ${motherDaysAgo} day${motherDaysAgo === 1 ? '' : 's'} ago`
                     : 'No logs yet'}
                 </span>
@@ -523,7 +590,7 @@ export default function InitiativeHub() {
                     type="button"
                     onClick={() => {
                       setRecipient('partner');
-                      setRecipientName('Partner');
+                      setRecipientName(partnerLabel);
                     }}
                     className={`p-2 rounded border text-left ${
                       recipient === 'partner'
@@ -531,7 +598,7 @@ export default function InitiativeHub() {
                         : 'bg-[#191919] border-[#373737] text-[#838383]'
                     }`}
                   >
-                    <span className="font-medium block">Partner</span>
+                    <span className="font-medium block">{partnerLabel}</span>
                     <span className="text-[10px] text-[#838383]">Date / Gestures / Chores</span>
                   </button>
 
@@ -539,7 +606,7 @@ export default function InitiativeHub() {
                     type="button"
                     onClick={() => {
                       setRecipient('mother');
-                      setRecipientName('Mother');
+                      setRecipientName(motherLabel);
                     }}
                     className={`p-2 rounded border text-left ${
                       recipient === 'mother'
@@ -547,7 +614,7 @@ export default function InitiativeHub() {
                         : 'bg-[#191919] border-[#373737] text-[#838383]'
                     }`}
                   >
-                    <span className="font-medium block">Mother</span>
+                    <span className="font-medium block">{motherLabel}</span>
                     <span className="text-[10px] text-[#838383]">Text / Check-in</span>
                   </button>
                 </div>
@@ -564,7 +631,7 @@ export default function InitiativeHub() {
                       key={cat}
                       type="button"
                       onClick={() => {
-                        playSound('click', true);
+                        playSound('click');
                         setCategory(cat);
                       }}
                       className={`p-2 rounded border text-left text-[11px] transition-colors ${
@@ -634,7 +701,7 @@ export default function InitiativeHub() {
                   <button
                     type="button"
                     onClick={() => {
-                      playSound('click', true);
+                      playSound('click');
                       setWasPrompted(false);
                       setErrorMsg(null);
                     }}
@@ -651,7 +718,7 @@ export default function InitiativeHub() {
                   <button
                     type="button"
                     onClick={() => {
-                      playSound('click', true);
+                      playSound('click');
                       setWasPrompted(true);
                       setErrorMsg(null);
                     }}

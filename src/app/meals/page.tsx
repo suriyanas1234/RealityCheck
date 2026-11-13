@@ -1,27 +1,27 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   db,
-  DbMeal,
   DEFAULT_STAPLE_PROFILES,
   MEAL_SCHEDULE_WINDOWS,
+  getMealScheduleWindows,
   evaluateMealWindow,
   seedDatabaseIfEmpty,
 } from '@/lib/db';
-import { getTodayString } from '@/lib/date-utils';
+import { getTodayString, formatTimeShort } from '@/lib/date-utils';
+import { StorageService, DEFAULT_STAPLES } from '@/lib/storage';
+import { MealType, StapleMeal } from '@/types';
 import { TopHeader } from '@/components/TopHeader';
 import { playSound } from '@/lib/sound';
 import {
-  Utensils,
-  Clock,
   Check,
   AlertTriangle,
   Flame,
-  Plus,
   RotateCcw,
-  Info
+  SlidersHorizontal,
 } from 'lucide-react';
 
 export default function MealsEngineHub() {
@@ -29,10 +29,20 @@ export default function MealsEngineHub() {
   const [todayDate, setTodayDate] = useState('');
   const [customName, setCustomName] = useState('');
   const [activeCustomSlot, setActiveCustomSlot] = useState<'breakfast' | 'lunch' | 'dinner' | null>(null);
+  const [previewSlot, setPreviewSlot] = useState<MealType>('breakfast');
+  const [staplesBySlot, setStaplesBySlot] = useState<Record<MealType, StapleMeal[]>>(DEFAULT_STAPLES);
+  const [scheduleWindows, setScheduleWindows] = useState(MEAL_SCHEDULE_WINDOWS);
+  const [militaryTime, setMilitaryTime] = useState(false);
 
   useEffect(() => {
     seedDatabaseIfEmpty();
     setTodayDate(getTodayString());
+    const settings = StorageService.getSettings();
+    if (settings.staples) {
+      setStaplesBySlot(settings.staples);
+    }
+    setMilitaryTime(Boolean(settings.militaryTime));
+    setScheduleWindows(getMealScheduleWindows());
     setMounted(true);
   }, []);
 
@@ -46,11 +56,25 @@ export default function MealsEngineHub() {
     []
   );
 
+  const getSlotStaples = (slot: MealType) => {
+    const custom = staplesBySlot?.[slot];
+    if (custom && custom.length > 0) {
+      return custom.map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        prepTime: `${s.preparationMinutes || 4} min`,
+        protein: `${s.proteinGrams || 22}g`,
+      }));
+    }
+    return DEFAULT_STAPLE_PROFILES;
+  };
+
   const handleLogStaple = async (
     mealType: 'breakfast' | 'lunch' | 'dinner',
-    staple: (typeof DEFAULT_STAPLE_PROFILES)[0]
+    staple: { id: string; name: string; prepTime: string; protein: string }
   ) => {
-    playSound('execute', true);
+    playSound('execute');
     const now = new Date();
     const { isOutlier, reason } = evaluateMealWindow(mealType, now);
 
@@ -66,11 +90,12 @@ export default function MealsEngineHub() {
       outlierReason: reason,
       updatedAt: now.toISOString(),
     });
+    StorageService.logMeal(todayDate, mealType, staple.id, staple.name);
   };
 
   const handleLogCustom = async (mealType: 'breakfast' | 'lunch' | 'dinner') => {
     if (!customName.trim()) return;
-    playSound('execute', true);
+    playSound('execute');
     const now = new Date();
     const { isOutlier, reason } = evaluateMealWindow(mealType, now);
 
@@ -85,13 +110,15 @@ export default function MealsEngineHub() {
       outlierReason: reason,
       updatedAt: now.toISOString(),
     });
+    StorageService.logMeal(todayDate, mealType, undefined, customName.trim());
     setCustomName('');
     setActiveCustomSlot(null);
   };
 
   const handleRemoveMeal = async (id: string) => {
-    playSound('click', true);
+    playSound('click');
     await db.meals.delete(id);
+    StorageService.removeMealLog(id);
   };
 
   if (!mounted) {
@@ -107,9 +134,9 @@ export default function MealsEngineHub() {
     title: string;
     window: typeof MEAL_SCHEDULE_WINDOWS.breakfast;
   }> = [
-    { type: 'breakfast', title: 'Breakfast Anchor', window: MEAL_SCHEDULE_WINDOWS.breakfast },
-    { type: 'lunch', title: 'Lunch Anchor', window: MEAL_SCHEDULE_WINDOWS.lunch },
-    { type: 'dinner', title: 'Dinner Anchor', window: MEAL_SCHEDULE_WINDOWS.dinner },
+    { type: 'breakfast', title: 'Breakfast Anchor', window: scheduleWindows.breakfast },
+    { type: 'lunch', title: 'Lunch Anchor', window: scheduleWindows.lunch },
+    { type: 'dinner', title: 'Dinner Anchor', window: scheduleWindows.dinner },
   ];
 
   return (
@@ -143,18 +170,43 @@ export default function MealsEngineHub() {
 
         {/* The 3 Staple Profiles Reference */}
         <div className="notion-panel p-4">
-          <div className="flex items-center justify-between pb-2 mb-3 border-b border-[#373737]">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 mb-3 border-b border-[#373737]">
             <div className="flex items-center gap-2">
               <Flame className="w-3.5 h-3.5 text-[#D9730D]" />
               <h3 className="text-xs uppercase tracking-wider text-[#838383] font-semibold">
                 3 Fixed Staple Profiles
               </h3>
             </div>
-            <span className="text-[10px] text-[#838383]">&lt; 5 Min Preparation</span>
+            <div className="flex items-center gap-1.5">
+              {(['breakfast', 'lunch', 'dinner'] as MealType[]).map((slot) => (
+                <button
+                  key={slot}
+                  onClick={() => {
+                    playSound('click');
+                    setPreviewSlot(slot);
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] uppercase font-mono border transition-colors ${
+                    previewSlot === slot
+                      ? 'bg-[#252525] border-[#4D4D4D] text-[#E3E3E3]'
+                      : 'bg-[#191919] border-[#373737] text-[#838383] hover:text-[#E3E3E3]'
+                  }`}
+                >
+                  {slot}
+                </button>
+              ))}
+              <Link
+                href="/signup"
+                className="ml-1 px-2 py-0.5 rounded text-[10px] bg-[#202020] border border-[#373737] text-[#337EA9] hover:border-[#337EA9] flex items-center gap-1"
+                title="Customize Staples"
+              >
+                <SlidersHorizontal className="w-2.5 h-2.5" />
+                <span>Edit</span>
+              </Link>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-            {DEFAULT_STAPLE_PROFILES.map((staple) => (
+            {getSlotStaples(previewSlot).map((staple) => (
               <div
                 key={staple.id}
                 className="bg-[#202020] border border-[#373737] rounded p-3 text-xs flex flex-col justify-between"
@@ -230,10 +282,7 @@ export default function MealsEngineHub() {
                       </div>
                       <p className="text-[11px] text-[#838383] mt-0.5 font-mono">
                         Logged at{' '}
-                        {new Date(loggedEntry.loggedAt).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {formatTimeShort(new Date(loggedEntry.loggedAt), militaryTime)}
                         {loggedEntry.outlierReason && ` • ${loggedEntry.outlierReason}`}
                       </p>
                     </div>
@@ -253,7 +302,7 @@ export default function MealsEngineHub() {
                       1-Tap Instant Execution
                     </span>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {DEFAULT_STAPLE_PROFILES.map((staple) => (
+                      {getSlotStaples(type).map((staple) => (
                         <button
                           key={staple.id}
                           onClick={() => handleLogStaple(type, staple)}
@@ -320,6 +369,11 @@ export default function MealsEngineHub() {
           </h3>
 
           <div className="divide-y divide-[#373737] text-xs">
+            {allMeals && allMeals.length === 0 && (
+              <div className="py-6 text-center text-[#838383]">
+                No meals logged yet. Tap a staple profile above to log your first meal.
+              </div>
+            )}
             {allMeals?.map((m) => (
               <div key={m.id} className="py-2.5 flex items-center justify-between">
                 <div>
@@ -335,7 +389,7 @@ export default function MealsEngineHub() {
                     )}
                   </div>
                   <p className="text-[10px] text-[#838383] font-mono mt-0.5">
-                    {m.date} • {new Date(m.loggedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {m.date} • {formatTimeShort(new Date(m.loggedAt), militaryTime)}
                     {m.outlierReason && ` (${m.outlierReason})`}
                   </p>
                 </div>

@@ -13,20 +13,25 @@ interface TopHeaderProps {
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({ pageTitle = 'Execution Hub', icon = '🎯' }) => {
-  const { isOnline, syncStatus, triggerSync } = useCloudSync();
+  const { syncStatus, pendingCount, triggerSync } = useCloudSync();
   const [timeStr, setTimeStr] = useState<string>('');
   const [isFrictionOpen, setIsFrictionOpen] = useState(false);
   const [operatorName, setOperatorName] = useState<string>('');
   const [isOnboarded, setIsOnboarded] = useState<boolean>(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     const profile = StorageService.getUserProfile();
+    const settings = StorageService.getSettings();
     setOperatorName(profile.name || 'Operator');
     setIsOnboarded(StorageService.isOnboarded());
+    setSoundEnabled(settings.soundEnabled ?? true);
 
     const updateTime = () => {
+      const currentSettings = StorageService.getSettings();
       setTimeStr(
         new Date().toLocaleTimeString([], {
+          hour12: !currentSettings.militaryTime,
           hour: '2-digit',
           minute: '2-digit',
         })
@@ -103,7 +108,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ pageTitle = 'Execution Hub
               ) : (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-[#337EA9]" />
-                  <span>IndexedDB</span>
+                  <span>IndexedDB{pendingCount > 0 ? ` (${pendingCount})` : ''}</span>
                 </>
               )}
             </button>
@@ -133,7 +138,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ pageTitle = 'Execution Hub
 
       <FrictionKillerModal
         isOpen={isFrictionOpen}
-        soundEnabled={true}
+        soundEnabled={soundEnabled}
         onClose={() => setIsFrictionOpen(false)}
       />
     </>

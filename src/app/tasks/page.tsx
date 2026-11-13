@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, DbTask, DbGroceryItem, GroceryCategory, TaskPriority } from '@/lib/db';
+import { getTodayString } from '@/lib/date-utils';
 import { TopHeader } from '@/components/TopHeader';
 import { playSound } from '@/lib/sound';
 import {
@@ -87,20 +88,24 @@ export default function TasksHub() {
   const [todayStr, setTodayStr] = useState('');
 
   useEffect(() => {
-    setTodayStr(new Date().toISOString().slice(0, 10));
+    setTodayStr(getTodayString());
   }, []);
 
   const filteredTasks = useMemo(() => {
     if (!tasks) return [];
     if (taskFilter === 'active') return tasks.filter((t) => !t.completed);
-    return tasks.filter((t) => t.completed && (!todayStr || t.completedAt?.startsWith(todayStr)));
+    return tasks.filter((t) => {
+      if (!t.completed) return false;
+      if (!todayStr || !t.completedAt) return true;
+      return getTodayString(new Date(t.completedAt)) === todayStr;
+    });
   }, [tasks, taskFilter, todayStr]);
 
   const addTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskTitle.trim()) return;
     try {
-      playSound('execute', true);
+      playSound('execute');
       const now = new Date().toISOString();
       const task: DbTask = {
         id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -119,7 +124,7 @@ export default function TasksHub() {
 
   const toggleTask = async (task: DbTask) => {
     try {
-      playSound('execute', true);
+      playSound('execute');
       const now = new Date().toISOString();
       await db.tasks.update(task.id, {
         completed: !task.completed,
@@ -133,7 +138,7 @@ export default function TasksHub() {
 
   const deleteTask = async (id: string) => {
     try {
-      playSound('click', true);
+      playSound('click');
       await db.tasks.delete(id);
     } catch (err) {
       console.error('Failed to delete task:', err);
@@ -144,7 +149,7 @@ export default function TasksHub() {
     e.preventDefault();
     if (!groceryName.trim()) return;
     try {
-      playSound('execute', true);
+      playSound('execute');
       const now = new Date().toISOString();
       const item: DbGroceryItem = {
         id: `groc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -163,7 +168,7 @@ export default function TasksHub() {
 
   const addQuickStaple = async (name: string, category: GroceryCategory) => {
     try {
-      playSound('execute', true);
+      playSound('execute');
       const now = new Date().toISOString();
       await db.groceries.put({
         id: `groc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -180,7 +185,7 @@ export default function TasksHub() {
 
   const toggleGrocery = async (item: DbGroceryItem) => {
     try {
-      playSound('click', true);
+      playSound('click');
       await db.groceries.update(item.id, {
         checked: !item.checked,
         updatedAt: new Date().toISOString(),
@@ -192,7 +197,7 @@ export default function TasksHub() {
 
   const deleteGrocery = async (id: string) => {
     try {
-      playSound('click', true);
+      playSound('click');
       await db.groceries.delete(id);
     } catch (err) {
       console.error('Failed to delete grocery:', err);
@@ -201,7 +206,7 @@ export default function TasksHub() {
 
   const clearCompletedGroceries = async () => {
     try {
-      playSound('execute', true);
+      playSound('execute');
       const done = (groceries || []).filter((g) => g.checked);
       await Promise.all(done.map((g) => db.groceries.delete(g.id)));
     } catch (err) {
@@ -248,7 +253,7 @@ export default function TasksHub() {
               <button
                 key={t.id}
                 onClick={() => {
-                  playSound('click', true);
+                  playSound('click');
                   setView(t.id);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-medium transition-colors ${
@@ -283,7 +288,7 @@ export default function TasksHub() {
                       key={p}
                       type="button"
                       onClick={() => {
-                        playSound('click', true);
+                        playSound('click');
                         setTaskPriority(p);
                       }}
                       className={`px-2 py-1 rounded border text-[11px] transition-colors ${
@@ -312,7 +317,7 @@ export default function TasksHub() {
                 <button
                   key={f}
                   onClick={() => {
-                    playSound('click', true);
+                    playSound('click');
                     setTaskFilter(f);
                   }}
                   className={`px-2.5 py-1 rounded border transition-colors ${

@@ -16,6 +16,8 @@ import {
   upsertGymSessions,
   fetchPushupLogsSince,
   fetchGymSessionsSince,
+  upsertChoreRecords,
+  fetchChoresSince,
 } from '@/lib/supabase';
 import {
   SyncStatus,
@@ -26,6 +28,7 @@ import {
   DailyAuditRecordCloud,
   PushupLogRecord,
   GymSessionRecord,
+  ChoreRecordCloud,
 } from '@/types';
 
 const LAST_SYNC_KEY = 'realitycheck_last_sync_at';
@@ -250,8 +253,43 @@ export function useCloudSync() {
         }
       }
 
+      if (unsynced.chores.length) {
+        const records: ChoreRecordCloud[] = unsynced.chores.map((c) => ({
+          id: c.id,
+          user_id: userId,
+          title: c.title,
+          slot: c.slot,
+          is_default: c.isDefault,
+          completed_dates: c.completedDates || {},
+          updated_at: c.updatedAt,
+        }));
+        const res = await upsertChoreRecords(records, creds.url, creds.anonKey);
+        if (res.success || res.error?.includes('relation "chores" does not exist') || res.error?.includes('42P01')) {
+          if (res.success) pushed += records.length;
+          await markRecordsSynced({ chores: unsynced.chores.map((c) => c.id) });
+        } else {
+          setLastError(`Chores push failed: ${res.error}`);
+        }
+      }
+
       // ---------- PULL (Cloud -> Local) ----------
       let pulled = 0;
+
+      const choresRes = await fetchChoresSince(userId, lastSyncIso, creds.url, creds.anonKey);
+      if (choresRes.success && choresRes.records?.length) {
+        await db.chores.bulkPut(
+          choresRes.records.map((r) => ({
+            id: r.id,
+            title: r.title,
+            slot: r.slot,
+            isDefault: r.is_default,
+            completedDates: r.completed_dates || {},
+            updatedAt: r.updated_at,
+            syncedAt: new Date().toISOString(),
+          }))
+        );
+        pulled += choresRes.records.length;
+      }
 
       const mealsRes = await fetchMealsSince(userId, lastSyncIso, creds.url, creds.anonKey);
       if (mealsRes.success && mealsRes.records?.length) {
