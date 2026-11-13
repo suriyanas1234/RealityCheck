@@ -1,7 +1,7 @@
 # Graph Report - RealityCheck  (2026-11-13)
 
 ## Corpus Check
-- 47 files · ~39,157 words
+- 47 files · ~39,165 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 3 file(s) not represented in the graph (top: (none) 1, .ico 1, .css 1)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1e608b56`
+- Built from commit: `415829bd`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -42,21 +42,21 @@
 5. `lucide-react` - 23 edges
 6. `getTodayString()` - 21 edges
 7. `createCustomSupabaseClient()` - 20 edges
-8. `TodayExecutionHub()` - 16 edges
-9. `TopHeader()` - 16 edges
+8. `TopHeader()` - 16 edges
+9. `TodayExecutionHub()` - 16 edges
 10. `compilerOptions` - 16 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `⚡ Offline-First Architecture & Cloud Sync` --references--> `useCloudSync()`  [INFERRED]
   README.md → src/hooks/useCloudSync.ts
-- `DailyRhythm()` --calls--> `playSound()`  [EXTRACTED]
-  src/components/DailyRhythm.tsx → src/lib/sound.ts
 - `NightlyAuditProps` --references--> `NightlyAuditRecord`  [EXTRACTED]
   src/components/NightlyAudit.tsx → src/types/index.ts
-- `InitiativeHub()` --calls--> `getDayDifference()`  [EXTRACTED]
-  src/app/initiative/page.tsx → src/lib/date-utils.ts
-- `InitiativeHub()` --calls--> `getTodayString()`  [EXTRACTED]
-  src/app/initiative/page.tsx → src/lib/date-utils.ts
+- `DailyRhythm()` --calls--> `playSound()`  [EXTRACTED]
+  src/components/DailyRhythm.tsx → src/lib/sound.ts
+- `SignupOnboardingPage()` --calls--> `useAuth()`  [EXTRACTED]
+  src/app/signup/page.tsx → src/hooks/useAuth.ts
+- `SignupOnboardingPage()` --calls--> `useCloudSync()`  [EXTRACTED]
+  src/app/signup/page.tsx → src/hooks/useCloudSync.ts
 
 ## Import Cycles
 - None detected.

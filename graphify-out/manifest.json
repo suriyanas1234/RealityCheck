@@ -72,15 +72,15 @@
     "semantic_hash": ""
   },
   "src/app/signup/page.tsx": {
-    "mtime": 1794607086.6867406,
-    "seen": 1794607105.8072507,
-    "ast_hash": "9ad42a993fe0b78df8e39319326c8ebf",
+    "mtime": 1794607470.8938284,
+    "seen": 1794607509.363073,
+    "ast_hash": "cace7a60d56dffe91cbc8a7d84549e45",
     "semantic_hash": ""
   },
   "src/app/vault/page.tsx": {
-    "mtime": 1794606994.7811625,
-    "seen": 1794607105.8072507,
-    "ast_hash": "446160f64f5bd70c6bc2731e3fe5e6de",
+    "mtime": 1794607475.1513462,
+    "seen": 1794607509.3640466,
+    "ast_hash": "633fba737474e22aeee72e507452b6f5",
     "semantic_hash": ""
   },
   "src/components/AuthGate.tsx": {

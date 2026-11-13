@@ -158,11 +158,11 @@ export default function SignupOnboardingPage() {
       schedule.find((b) => b.id === id)?.time || fallback;
 
     const syncedAnchors = {
-      morningWake: findAnchorTime('anchor-morning-wake', userProfile.anchors?.morningWake || '08:00'),
-      breakfast: findAnchorTime('anchor-breakfast', userProfile.anchors?.breakfast || '08:30'),
-      lunch: findAnchorTime('anchor-lunch', userProfile.anchors?.lunch || '13:00'),
-      dinner: findAnchorTime('anchor-dinner', userProfile.anchors?.dinner || '18:30'),
-      eveningAudit: findAnchorTime('anchor-audit', userProfile.anchors?.eveningAudit || '22:30'),
+      morningReset: findAnchorTime('block-wake', userProfile.anchors?.morningReset || '08:00'),
+      breakfast: findAnchorTime('block-breakfast', userProfile.anchors?.breakfast || '08:30'),
+      lunch: findAnchorTime('block-lunch', userProfile.anchors?.lunch || '13:00'),
+      eveningReset: findAnchorTime('block-dinner', userProfile.anchors?.eveningReset || '18:30'),
+      dayClosure: findAnchorTime('block-winddown', userProfile.anchors?.dayClosure || '22:30'),
     };
 
     const payload: PrerequisitesPayload = {

@@ -102,17 +102,15 @@ export default function VaultHub() {
       observation: observation.trim() || undefined,
       completedAt: nowIso,
       updatedAt: nowIso,
-      synced: 0,
+      syncedAt: undefined,
     });
 
     StorageService.recordAudit({
       date: selectedAuditDate,
-      completed: true,
-      completedAt: nowIso,
-      mealsOnSchedule: mealsYes,
-      sharedSpaceUnprompted: choresYes,
-      composedWithoutDefensiveness: composureYes,
-      frictionNote: observation.trim() || '',
+      adheredToMealSchedule: mealsYes,
+      completedChoresUnprompted: choresYes,
+      maintainedComposure: composureYes,
+      objectiveObservation: observation.trim() || undefined,
     });
 
     setIsSaved(true);
@@ -177,10 +175,13 @@ export default function VaultHub() {
     try {
       const rawJson = await file.text();
       const res = await importDatabaseBackup(rawJson);
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to restore backup');
+      }
       playSound('execute');
       setImportFeedback({
         type: 'success',
-        message: `Restored ${res.restoredCount} records from backup successfully.`,
+        message: `Restored ${res.count} records from backup successfully.`,
       });
     } catch (err: unknown) {
       playSound('error');
@@ -358,7 +359,7 @@ export default function VaultHub() {
               🧹 Chores: <strong className="text-[#E3E3E3]">{completedChoresCount}/{totalChoresCount} done</strong>
             </span>
             <span>
-              💪 Pushups: <strong className="text-[#E3E3E3]">{selectedDayPushups?.totalReps || 0}/{selectedDayPushups?.targetReps || 50}</strong>
+              💪 Pushups: <strong className="text-[#E3E3E3]">{selectedDayPushups?.completedCount || 0}/{selectedDayPushups?.targetCount || 100}</strong>
               {selectedDayGym?.completed ? ' • 🏋️ Gym ✓' : ''}
             </span>
           </div>
